@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
+import { exportToCsv } from '../utils/exportCsv';
 import { Download } from 'lucide-react';
 
 export const LostDeals = () => {
@@ -23,7 +24,21 @@ export const LostDeals = () => {
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'bold' }}>Lost Deals Registry</h1>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Opportunities drop analysis and competitor tracking</p>
         </div>
-        <button className="btn btn-outline" onClick={() => showToast('Lost deals analysis exported!', 'success')} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button className="btn btn-outline" onClick={() => {
+          const n = exportToCsv('lost_deals', [
+            { key: 'id', label: 'Lead No' },
+            { key: 'date', label: 'Date' },
+            { key: 'name', label: 'Name' },
+            { key: 'phone', label: 'Phone' },
+            { key: 'email', label: 'Email' },
+            { key: 'project', label: 'Project' },
+            { key: 'budget', label: 'Budget' },
+            { key: 'source', label: 'Source' },
+            { key: 'executive', label: 'Executive' },
+            { key: 'status', label: 'Status' },
+          ], leads);
+          showToast(`Exported ${n} lost deal(s) to CSV.`, 'success');
+        }} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <Download size={16} /> Export Analysis
         </button>
       </div>

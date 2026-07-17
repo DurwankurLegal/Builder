@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.core.config import settings
 from app.core.security import decode_token
-from app.db.session import get_db_session
+from app.db.session import get_db_session, InvalidTenantError
 from app.models.models import User
 
 # Define token schema route
@@ -17,7 +17,13 @@ async def get_db(request: Request):
     Dependency resolver that provisions active database sessions scoped to the client tenant's schema search path.
     """
     tenant_id = getattr(request.state, "tenant_id", "public")
-    session = await get_db_session(tenant_id)
+    try:
+        session = await get_db_session(tenant_id)
+    except InvalidTenantError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid workspace (X-Tenant-ID) header"
+        )
     try:
         yield session
     finally:

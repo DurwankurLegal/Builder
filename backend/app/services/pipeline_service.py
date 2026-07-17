@@ -93,14 +93,24 @@ async def find_duplicate(db: AsyncSession, phone: str, email: str, settings_row:
     return None
 
 
-async def _next_suffix_id(db: AsyncSession, model, prefix: str, base: int) -> str:
-    result = await db.execute(select(model.id if hasattr(model, "id") else model.bookingNo))
+async def next_suffix_id(db: AsyncSession, model, prefix: str, base: int) -> str:
+    """
+    Generates the next PREFIX-N id from the highest existing numeric suffix.
+    Max-based (not count-based) so ids never collide after deletions or when
+    multiple code paths mint ids for the same table.
+    """
+    id_col = model.id if hasattr(model, "id") else model.bookingNo
+    result = await db.execute(select(id_col))
     max_num = base
     for (rid,) in result.all():
         match = re.match(rf"{prefix}-(\d+)", rid or "")
         if match:
             max_num = max(max_num, int(match.group(1)))
     return f"{prefix}-{max_num + 1}"
+
+
+# Backwards-compatible alias (internal callers)
+_next_suffix_id = next_suffix_id
 
 
 async def move_lead(db: AsyncSession, lead: PipelineLead, target: str, actor: str, tenant: str) -> str | None:

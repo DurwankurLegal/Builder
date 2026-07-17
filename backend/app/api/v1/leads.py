@@ -6,6 +6,7 @@ from datetime import datetime
 from app.api.deps import get_db, get_current_user
 from app.models.models import Lead, Customer
 from app.schemas.schemas import LeadCreate, LeadUpdate, LeadResponse
+from app.services.pipeline_service import next_suffix_id
 
 router = APIRouter()
 
@@ -63,11 +64,9 @@ async def create_lead(payload: LeadCreate, db: AsyncSession = Depends(get_db), u
     """
     Registers a new lead with historical logs in the database.
     """
-    # Generate unique ID
-    result = await db.execute(select(Lead))
-    all_leads = result.scalars().all()
-    new_id = f"LD-{1000 + len(all_leads) + 1}"
-    
+    # Generate unique ID (max-based so it never collides after deletions)
+    new_id = await next_suffix_id(db, Lead, "LD", 1000)
+
     now_date = datetime.now().strftime("%Y-%m-%d")
     new_lead = Lead(
         id=new_id,
@@ -137,11 +136,9 @@ async def convert_lead(lead_id: str, db: AsyncSession = Depends(get_db), user = 
     history.append({"date": now_str, "detail": f"Lead converted to active customer context by {user.username}."})
     lead.history = history
     
-    # Create Customer Record
-    result_cust = await db.execute(select(Customer))
-    all_cust = result_cust.scalars().all()
-    cust_id = f"CUST-{5000 + len(all_cust) + 1}"
-    
+    # Create Customer Record (max-based id, collision-safe)
+    cust_id = await next_suffix_id(db, Customer, "CUST", 5000)
+
     new_customer = Customer(
         id=cust_id,
         lead_id=lead.id,

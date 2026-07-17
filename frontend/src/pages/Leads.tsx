@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
-import { 
+import { exportToCsv } from '../utils/exportCsv';
+import {
   Plus, Search, Download, Trash2, ArrowLeft, XCircle, Clock,
   Edit, UserCheck, Sparkles, Phone, RotateCcw, ChevronLeft, ChevronRight
 } from 'lucide-react';
@@ -31,6 +32,7 @@ export const Leads = () => {
   const [showLostModal, setShowLostModal] = useState(false);
   const [showTimelineModal, setShowTimelineModal] = useState(false);
   const [showRemarkModal, setShowRemarkModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
   
   // Search & Filters parameters
   const [search, setSearch] = useState('');
@@ -206,7 +208,7 @@ export const Leads = () => {
             </p>
           </div>
           <div style={{ display: 'flex', gap: 'var(--spacing-2)', flexWrap: 'wrap' }}>
-            <button className="btn btn-outline" onClick={() => showToast('Edit lead profile loaded!', 'info')}>
+            <button className="btn btn-outline" onClick={() => setShowEditModal(true)}>
               <Edit size={16} style={{ marginRight: '6px' }} /> Edit
             </button>
             {activeLead.status !== 'Converted' && activeLead.status !== 'Lost' && (
@@ -428,6 +430,75 @@ export const Leads = () => {
             </form>
           </dialog>
         )}
+
+        {/* Edit Lead Modal */}
+        {showEditModal && (
+          <dialog open className="dialog">
+            <div className="dialog-header">
+              <h3 className="dialog-title">Edit Lead Profile — {activeLead.id}</h3>
+              <button className="dialog-close" onClick={() => setShowEditModal(false)}><XCircle size={16} /></button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const form = e.currentTarget;
+              updateLeadMutation.mutate({
+                id: activeLead.id,
+                data: {
+                  name: (form.elements.namedItem('editName') as HTMLInputElement).value,
+                  email: (form.elements.namedItem('editEmail') as HTMLInputElement).value,
+                  phone: (form.elements.namedItem('editPhone') as HTMLInputElement).value,
+                  project: (form.elements.namedItem('editProject') as HTMLSelectElement).value,
+                  budget: (form.elements.namedItem('editBudget') as HTMLInputElement).value,
+                  executive: (form.elements.namedItem('editExecutive') as HTMLSelectElement).value,
+                }
+              });
+              setShowEditModal(false);
+            }}>
+              <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
+                <div className="form-group">
+                  <label className="form-label">Prospect Name</label>
+                  <input type="text" name="editName" className="form-control" defaultValue={activeLead.name} style={{ width: '100%' }} required />
+                </div>
+                <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Email ID</label>
+                    <input type="email" name="editEmail" className="form-control" defaultValue={activeLead.email} style={{ width: '100%' }} required />
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Mobile Number</label>
+                    <input type="text" name="editPhone" className="form-control" defaultValue={activeLead.phone} style={{ width: '100%' }} required />
+                  </div>
+                </div>
+                <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Project</label>
+                    <select name="editProject" className="form-control" defaultValue={activeLead.project} style={{ width: '100%' }}>
+                      <option value="Sunrise Heights">Sunrise Heights</option>
+                      <option value="Green Meadows">Green Meadows</option>
+                      <option value="Royal Residency">Royal Residency</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ flex: 1 }}>
+                    <label className="form-label">Budget</label>
+                    <input type="text" name="editBudget" className="form-control" defaultValue={activeLead.budget} style={{ width: '100%' }} />
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Assigned Sales Executive</label>
+                  <select name="editExecutive" className="form-control" defaultValue={activeLead.executive} style={{ width: '100%' }}>
+                    <option value="Priya Patel">Priya Patel</option>
+                    <option value="Amit Singh">Amit Singh</option>
+                    <option value="admin">admin</option>
+                  </select>
+                </div>
+              </div>
+              <div className="dialog-footer">
+                <button type="button" className="btn btn-outline" onClick={() => setShowEditModal(false)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Changes</button>
+              </div>
+            </form>
+          </dialog>
+        )}
       </div>
     );
   }
@@ -442,7 +513,21 @@ export const Leads = () => {
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Manage and qualify property inquiry leads</p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--spacing-3)' }}>
-          <button className="btn btn-outline" id="leads-export-btn" onClick={() => showToast('Leads database exported!', 'success')}>
+          <button className="btn btn-outline" id="leads-export-btn" onClick={() => {
+            const n = exportToCsv('leads_database', [
+              { key: 'id', label: 'Lead No' },
+              { key: 'date', label: 'Date' },
+              { key: 'name', label: 'Name' },
+              { key: 'phone', label: 'Phone' },
+              { key: 'email', label: 'Email' },
+              { key: 'project', label: 'Project' },
+              { key: 'budget', label: 'Budget' },
+              { key: 'source', label: 'Source' },
+              { key: 'executive', label: 'Executive' },
+              { key: 'status', label: 'Status' },
+            ], sortedLeads);
+            showToast(`Exported ${n} lead(s) to CSV.`, 'success');
+          }}>
             <Download size={16} style={{ marginRight: '6px' }} /> Export Data
           </button>
           <button className="btn btn-primary" id="add-lead-trigger" onClick={() => setShowAddModal(true)}>

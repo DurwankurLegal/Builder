@@ -6,6 +6,7 @@ from datetime import datetime
 from app.api.deps import get_db, get_current_user
 from app.models.models import Customer
 from app.schemas.schemas import CustomerCreate, CustomerUpdate, CustomerResponse
+from app.services.pipeline_service import next_suffix_id
 
 router = APIRouter()
 
@@ -57,10 +58,8 @@ async def create_customer(payload: CustomerCreate, db: AsyncSession = Depends(ge
     """
     Registers a new active customer manually in the system database.
     """
-    result = await db.execute(select(Customer))
-    all_cust = result.scalars().all()
-    cust_id = f"CUST-{5000 + len(all_cust) + 1}"
-    
+    cust_id = await next_suffix_id(db, Customer, "CUST", 5000)
+
     now_str = datetime.now().strftime("%Y-%m-%d")
     
     new_cust = Customer(

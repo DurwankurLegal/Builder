@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
-import { 
+import { exportToCsv } from '../utils/exportCsv';
+import {
   ArrowLeft, Download
 } from 'lucide-react';
 
@@ -195,7 +196,21 @@ export const Bookings = () => {
           <h1 style={{ fontSize: 'var(--font-size-2xl)', fontWeight: 'bold' }}>Closed Bookings Database</h1>
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Agreement signatures and compliance workflows records</p>
         </div>
-        <button className="btn btn-outline" onClick={() => showToast('Closed bookings exported!', 'success')} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+        <button className="btn btn-outline" onClick={() => {
+          const n = exportToCsv('closed_bookings', [
+            { key: 'bookingNo', label: 'Booking No' },
+            { key: 'customer_name', label: 'Customer' },
+            { key: 'project', label: 'Project' },
+            { key: 'unit_no', label: 'Unit' },
+            { key: 'slab_area', label: 'Area' },
+            { key: 'booking_value', label: 'Booking Value' },
+            { key: 'token_amount', label: 'Token Amount' },
+            { key: 'payment_plan', label: 'Payment Plan' },
+            { key: 'agreement_status', label: 'Agreement Status' },
+            { key: 'registration_status', label: 'Registration Status' },
+          ], bookings);
+          showToast(`Exported ${n} booking(s) to CSV.`, 'success');
+        }} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
           <Download size={16} /> Export Registers
         </button>
       </div>

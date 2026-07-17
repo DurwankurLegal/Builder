@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
-import { 
+import { exportToCsv } from '../utils/exportCsv';
+import {
   Plus, Search, Download, ArrowLeft, XCircle, RotateCcw
 } from 'lucide-react';
 import { useForm } from 'react-hook-form';
@@ -288,7 +289,22 @@ export const Customers = () => {
           <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>Verify compliance documents and track legal registry registrations</p>
         </div>
         <div style={{ display: 'flex', gap: 'var(--spacing-3)' }}>
-          <button className="btn btn-outline" onClick={() => showToast('Customers register exported!', 'success')}>
+          <button className="btn btn-outline" onClick={() => {
+            const n = exportToCsv('customers_register', [
+              { key: 'id', label: 'Customer ID' },
+              { key: 'name', label: 'Name' },
+              { key: 'email', label: 'Email' },
+              { key: 'phone', label: 'Phone' },
+              { key: 'address', label: 'Address' },
+              { key: 'project', label: 'Project' },
+              { key: 'budget', label: 'Budget' },
+              { key: 'executive', label: 'Executive' },
+              { key: 'status', label: 'Status' },
+              { key: 'allocated_unit', label: 'Allocated Unit' },
+              { key: 'config', label: 'Config' },
+            ], customers);
+            showToast(`Exported ${n} customer record(s) to CSV.`, 'success');
+          }}>
             <Download size={16} style={{ marginRight: '6px' }} /> Export Register
           </button>
           <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
