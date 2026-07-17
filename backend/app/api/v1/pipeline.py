@@ -114,6 +114,14 @@ async def get_pipeline_lead(lead_id: str, db: AsyncSession = Depends(get_db), us
     return lead
 
 
+# Manual-entry defaults per target module: (status, stage label)
+MANUAL_ENTRY_STAGES = {
+    "raw": ("Raw Lead", "Raw Leads"),
+    "called": ("Called Lead", "Called Leads"),
+    "qualified": ("Qualified Lead", "Qualified Leads"),
+}
+
+
 @router.post("/leads", response_model=PipelineLeadResponse, status_code=status.HTTP_201_CREATED)
 async def create_pipeline_lead(
     payload: PipelineLeadCreate,
@@ -121,7 +129,16 @@ async def create_pipeline_lead(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user)
 ):
-    """Registers an individual raw lead with configurable duplicate validation."""
+    """
+    Registers an individual lead directly into the Raw, Called, or Qualified
+    module. All entry points share the same duplicate validation, history,
+    and audit logging.
+    """
+    target = payload.stage or "raw"
+    if target not in MANUAL_ENTRY_STAGES:
+        raise HTTPException(status_code=400, detail=f"Leads cannot be created directly in stage '{target}'")
+    entry_status, stage_label = MANUAL_ENTRY_STAGES[target]
+
     settings_row = await pipeline_service.get_settings(db)
     clash = await pipeline_service.find_duplicate(db, payload.phone, payload.email, settings_row)
     if clash:
@@ -137,14 +154,27 @@ async def create_pipeline_lead(
         source=payload.source,
         project=payload.project,
         budget=payload.budget,
-        stage="raw",
-        status="Pending Call",
+        stage=target,
+        status=entry_status,
         call_attempts=0,
-        history=[{"date": pipeline_service.now_stamp(), "action": "Raw lead registered manually", "user": user.username}]
+        history=[{"date": pipeline_service.now_stamp(),
+                  "action": f"Lead registered manually in {stage_label}", "user": user.username}]
     )
+
+    if target == "called":
+        lead.interest_status = payload.interest_status or "Interested"
+        lead.called_at = pipeline_service.now_stamp()
+        lead.ai_outcome = "Manual call entry by sales user"
+    elif target == "qualified":
+        lead.contacted_by = payload.contacted_by or user.username
+        lead.remarks = payload.remarks
+        lead.site_visit_status = payload.site_visit_status or "Not Scheduled"
+        lead.loan_requirement = payload.loan_requirement or "Pending Assessment"
+        lead.next_followup_date = payload.next_followup_date
+
     db.add(lead)
     await pipeline_service.write_audit(db, await tenant_name(request, db), user.username,
-                                       f"Raw lead {new_id} ({payload.name}) created manually.")
+                                       f"Lead {new_id} ({payload.name}) created manually in {stage_label}.")
     await db.commit()
     return lead
 

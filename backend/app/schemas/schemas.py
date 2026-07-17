@@ -90,6 +90,16 @@ class PipelineLeadCreate(BaseModel):
     source: str
     project: str
     budget: Optional[str] = None
+    # Target module for direct manual entry (raw | called | qualified)
+    stage: Optional[str] = "raw"
+    # Called Leads module-specific fields
+    interest_status: Optional[str] = None
+    # Qualified Leads module-specific fields
+    contacted_by: Optional[str] = None
+    remarks: Optional[str] = None
+    site_visit_status: Optional[str] = None
+    loan_requirement: Optional[str] = None
+    next_followup_date: Optional[str] = None
 
 class PipelineLeadUpdate(BaseModel):
     name: Optional[str] = None

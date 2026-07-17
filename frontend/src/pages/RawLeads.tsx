@@ -2,9 +2,6 @@ import { useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 import {
   Plus, Upload, History, XCircle, PhoneForwarded, Star, UserCheck,
   Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet
@@ -12,21 +9,10 @@ import {
 import {
   usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
   SOURCES, PROJECTS, SortableTh, PaginationBar, ExportButtons,
-  PipelineFilterBar, BulkActionBar, LeadHistoryModal
+  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
 } from '../components/pipeline/pipelineCommon';
 
-const rawLeadSchema = z.object({
-  name: z.string().min(3, 'Full name must have at least 3 letters'),
-  phone: z.string().regex(/^(?:\+91[\s-]?\d{5}[\s-]?\d{5}|\d{10})$/, 'Must be a 10-digit number or +91 XXXXX XXXXX'),
-  email: z.string().email('Invalid email address format'),
-  source: z.string().min(1, 'Please select a lead source'),
-  project: z.string().min(1, 'Please select a project'),
-  budget: z.string().optional(),
-});
-
-type RawLeadFormValues = z.infer<typeof rawLeadSchema>;
-
-const RAW_STATUSES = ['Pending Call', 'Call Failed - Retry Scheduled', 'Max Call Attempts Reached', 'Called (Manual)'];
+const RAW_STATUSES = ['Pending Call', 'Raw Lead', 'Call Failed - Retry Scheduled', 'Max Call Attempts Reached', 'Called (Manual)'];
 
 export const RawLeads = () => {
   const queryClient = useQueryClient();
@@ -68,20 +54,6 @@ export const RawLeads = () => {
   });
 
   const bulkMove = useBulkMove(() => setSelected(new Set()));
-
-  const createMutation = useMutation({
-    mutationFn: async (values: RawLeadFormValues) => (await apiClient.post('/pipeline/leads', values)).data,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
-      showToast('Raw lead registered - queued for AI calling!', 'success');
-      setShowAddModal(false);
-      reset();
-    },
-    onError: (err: any) => {
-      showToast(err?.response?.data?.detail || 'Lead creation failed.', 'danger');
-    }
-  });
 
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
@@ -138,11 +110,6 @@ export const RawLeads = () => {
     }
   });
 
-  const { register, handleSubmit, reset, formState: { errors } } = useForm<RawLeadFormValues>({
-    resolver: zodResolver(rawLeadSchema),
-    defaultValues: { source: 'Website Form', project: 'Sunrise Heights' }
-  });
-
   const items = data?.items || [];
   const allChecked = items.length > 0 && items.every(l => selected.has(l.id));
 
@@ -190,7 +157,7 @@ export const RawLeads = () => {
   };
 
   const statusBadge = (lead: PipelineLead) => {
-    const cls = lead.status === 'Pending Call' ? 'badge-info'
+    const cls = (lead.status === 'Pending Call' || lead.status === 'Raw Lead') ? 'badge-info'
       : lead.status === 'Call Failed - Retry Scheduled' ? 'badge-warning'
       : lead.status === 'Max Call Attempts Reached' ? 'badge-danger'
       : 'badge-neutral';
@@ -329,58 +296,8 @@ export const RawLeads = () => {
 
       <PaginationBar data={data} page={page} setPage={setPage} noun="raw leads" />
 
-      {/* Add Individual Lead Modal */}
-      {showAddModal && (
-        <dialog open className="dialog">
-          <div className="dialog-header">
-            <h3 className="dialog-title">Register Raw Lead</h3>
-            <button className="dialog-close" onClick={() => setShowAddModal(false)}><XCircle size={16} /></button>
-          </div>
-          <form onSubmit={handleSubmit((v) => createMutation.mutate(v))}>
-            <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
-              <div className="form-group">
-                <label className="form-label">Full Name</label>
-                <input type="text" className="form-control" placeholder="e.g. Divya Sen" style={{ width: '100%' }} {...register('name')} />
-                {errors.name && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.name.message}</span>}
-              </div>
-              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Phone Number</label>
-                  <input type="text" className="form-control" placeholder="9876543210" style={{ width: '100%' }} {...register('phone')} />
-                  {errors.phone && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.phone.message}</span>}
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Email ID</label>
-                  <input type="email" className="form-control" placeholder="name@domain.com" style={{ width: '100%' }} {...register('email')} />
-                  {errors.email && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.email.message}</span>}
-                </div>
-              </div>
-              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Lead Source</label>
-                  <select className="form-control" style={{ width: '100%' }} {...register('source')}>
-                    {SOURCES.filter(s => s !== 'Bulk Import').map(s => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-                <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Project Name</label>
-                  <select className="form-control" style={{ width: '100%' }} {...register('project')}>
-                    {PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="form-group">
-                <label className="form-label">Budget (optional)</label>
-                <input type="text" className="form-control" placeholder="e.g. ₹95 Lakhs" style={{ width: '100%' }} {...register('budget')} />
-              </div>
-            </div>
-            <div className="dialog-footer">
-              <button type="button" className="btn btn-outline" onClick={() => setShowAddModal(false)}>Cancel</button>
-              <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>Register Lead</button>
-            </div>
-          </form>
-        </dialog>
-      )}
+      {/* Add Individual Lead Modal (shared across pipeline modules) */}
+      {showAddModal && <AddLeadModal stage="raw" onClose={() => setShowAddModal(false)} />}
 
       {/* Bulk Upload Modal */}
       {showUploadModal && (

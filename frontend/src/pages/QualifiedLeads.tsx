@@ -2,15 +2,13 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
-import { XCircle, UserCheck, Database, Edit } from 'lucide-react';
+import { XCircle, UserCheck, Database, Edit, Plus } from 'lucide-react';
 import {
   usePipelineLeads, useBulkMove, PipelineLead,
   PROJECTS, SortableTh, PaginationBar, ExportButtons,
-  PipelineFilterBar, BulkActionBar, LeadHistoryModal
+  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal,
+  SITE_VISIT_STATUSES, LOAN_REQUIREMENTS
 } from '../components/pipeline/pipelineCommon';
-
-const SITE_VISIT_STATUSES = ['Not Scheduled', 'Scheduled', 'Completed'];
-const LOAN_REQUIREMENTS = ['Pending Assessment', 'Required', 'Not Required', 'Pre-Approved'];
 
 export const QualifiedLeads = () => {
   const queryClient = useQueryClient();
@@ -26,6 +24,7 @@ export const QualifiedLeads = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editLead, setEditLead] = useState<PipelineLead | null>(null);
   const [historyLead, setHistoryLead] = useState<PipelineLead | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const { data, isLoading } = usePipelineLeads({
     stage: 'qualified', search, project: projectFilter,
@@ -81,6 +80,9 @@ export const QualifiedLeads = () => {
         </div>
         <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
           <ExportButtons stage="qualified" />
+          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} style={{ marginRight: '6px' }} /> Add Lead
+          </button>
         </div>
       </div>
 
@@ -247,6 +249,7 @@ export const QualifiedLeads = () => {
         </dialog>
       )}
 
+      {showAddModal && <AddLeadModal stage="qualified" onClose={() => setShowAddModal(false)} />}
       {historyLead && <LeadHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
     </div>
   );

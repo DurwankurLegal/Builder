@@ -20,7 +20,7 @@ from app.services import pipeline_service
 AGENT_NAME = "AI Calling Agent"
 GLOBAL_TICK_SECONDS = 15  # worker heartbeat; per-tenant cadence comes from lead_settings
 
-PENDING_STATUSES = ("Pending Call", "Call Failed - Retry Scheduled")
+PENDING_STATUSES = ("Pending Call", "Raw Lead", "Call Failed - Retry Scheduled")
 
 OUTCOME_PROFILES = [
     {

@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
 import {
-  XCircle, Star, UserCheck, Database, Play, Download, Volume2
+  XCircle, Star, UserCheck, Database, Play, Download, Volume2, Plus
 } from 'lucide-react';
 import {
   usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
   SOURCES, PROJECTS, SortableTh, PaginationBar, ExportButtons,
-  PipelineFilterBar, BulkActionBar, LeadHistoryModal
+  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
 } from '../components/pipeline/pipelineCommon';
 
 /** Fetches the call recording as an authed blob and plays it inline. */
@@ -102,6 +102,7 @@ export const CalledLeads = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [playingLead, setPlayingLead] = useState<PipelineLead | null>(null);
   const [historyLead, setHistoryLead] = useState<PipelineLead | null>(null);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const { data, isLoading } = usePipelineLeads({
     stage: 'called', search, interest: interestFilter, source: sourceFilter,
@@ -142,6 +143,9 @@ export const CalledLeads = () => {
         </div>
         <div style={{ display: 'flex', gap: 'var(--spacing-2)' }}>
           <ExportButtons stage="called" />
+          <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+            <Plus size={16} style={{ marginRight: '6px' }} /> Add Lead
+          </button>
         </div>
       </div>
 
@@ -249,6 +253,7 @@ export const CalledLeads = () => {
 
       <PaginationBar data={data} page={page} setPage={setPage} noun="called leads" />
 
+      {showAddModal && <AddLeadModal stage="called" onClose={() => setShowAddModal(false)} />}
       {playingLead && <RecordingModal lead={playingLead} onClose={() => setPlayingLead(null)} />}
       {historyLead && <LeadHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
     </div>

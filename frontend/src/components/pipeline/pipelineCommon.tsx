@@ -1,5 +1,8 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { apiClient } from '../../config/api';
 import { useUIStore } from '../../store/uiStore';
 import { useAuthStore } from '../../store/authStore';
@@ -297,6 +300,174 @@ export const BulkActionBar = ({ count, actions, onClear }: {
         Clear selection
       </button>
     </div>
+  );
+};
+
+// ========================================================
+// SHARED ADD LEAD MODAL (Raw / Called / Qualified modules)
+// ========================================================
+
+export const SITE_VISIT_STATUSES = ['Not Scheduled', 'Scheduled', 'Completed'];
+export const LOAN_REQUIREMENTS = ['Pending Assessment', 'Required', 'Not Required', 'Pre-Approved'];
+
+const addLeadSchema = z.object({
+  name: z.string().min(3, 'Full name must have at least 3 letters'),
+  phone: z.string().regex(/^(?:\+91[\s-]?\d{5}[\s-]?\d{5}|0?\d{10})$/, 'Must be a 10-digit number or +91 XXXXX XXXXX'),
+  email: z.string().email('Invalid email address format'),
+  source: z.string().min(1, 'Please select a lead source'),
+  project: z.string().min(1, 'Please select a project'),
+  budget: z.string().optional(),
+  interest_status: z.string().optional(),
+  contacted_by: z.string().optional(),
+  remarks: z.string().optional(),
+  site_visit_status: z.string().optional(),
+  loan_requirement: z.string().optional(),
+  next_followup_date: z.string().optional(),
+});
+
+export type AddLeadFormValues = z.infer<typeof addLeadSchema>;
+
+const STAGE_TITLES: Record<string, string> = {
+  raw: 'Register Raw Lead',
+  called: 'Register Called Lead',
+  qualified: 'Register Qualified Lead',
+};
+
+/**
+ * One Add Lead form for every pipeline module. The base fields and
+ * validation are identical everywhere; Called and Qualified expose their
+ * module-specific fields on top. The backend applies the same duplicate
+ * detection and audit logging regardless of entry point.
+ */
+export const AddLeadModal = ({ stage, onClose }: { stage: 'raw' | 'called' | 'qualified'; onClose: () => void }) => {
+  const queryClient = useQueryClient();
+  const { showToast } = useUIStore();
+  const { userInfo } = useAuthStore();
+
+  const { register, handleSubmit, formState: { errors } } = useForm<AddLeadFormValues>({
+    resolver: zodResolver(addLeadSchema),
+    defaultValues: {
+      source: 'Website Form',
+      project: 'Sunrise Heights',
+      interest_status: 'Interested',
+      contacted_by: userInfo?.username || '',
+      site_visit_status: 'Not Scheduled',
+      loan_requirement: 'Pending Assessment',
+    }
+  });
+
+  const createMutation = useMutation({
+    mutationFn: async (values: AddLeadFormValues) =>
+      (await apiClient.post('/pipeline/leads', { ...values, stage })).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      showToast(stage === 'raw'
+        ? 'Raw lead registered - queued for AI calling!'
+        : `Lead registered directly in ${stage === 'called' ? 'Called' : 'Qualified'} Leads!`, 'success');
+      onClose();
+    },
+    onError: (err: any) => {
+      showToast(err?.response?.data?.detail || 'Lead creation failed.', 'danger');
+    }
+  });
+
+  return (
+    <dialog open className="dialog">
+      <div className="dialog-header">
+        <h3 className="dialog-title">{STAGE_TITLES[stage]}</h3>
+        <button className="dialog-close" onClick={onClose}><XCircle size={16} /></button>
+      </div>
+      <form onSubmit={handleSubmit((v) => createMutation.mutate(v))}>
+        <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)', maxHeight: '60vh', overflowY: 'auto' }}>
+          <div className="form-group">
+            <label className="form-label">Full Name</label>
+            <input type="text" className="form-control" placeholder="e.g. Divya Sen" style={{ width: '100%' }} {...register('name')} />
+            {errors.name && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.name.message}</span>}
+          </div>
+          <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Phone Number</label>
+              <input type="text" className="form-control" placeholder="9876543210" style={{ width: '100%' }} {...register('phone')} />
+              {errors.phone && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.phone.message}</span>}
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Email ID</label>
+              <input type="email" className="form-control" placeholder="name@domain.com" style={{ width: '100%' }} {...register('email')} />
+              {errors.email && <span className="help-text" style={{ color: 'var(--color-danger)' }}>{errors.email.message}</span>}
+            </div>
+          </div>
+          <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Lead Source</label>
+              <select className="form-control" style={{ width: '100%' }} {...register('source')}>
+                {SOURCES.filter(s => s !== 'Bulk Import').map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+            <div className="form-group" style={{ flex: 1 }}>
+              <label className="form-label">Project Name</label>
+              <select className="form-control" style={{ width: '100%' }} {...register('project')}>
+                {PROJECTS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Budget {stage === 'raw' ? '(optional)' : ''}</label>
+            <input type="text" className="form-control" placeholder="e.g. ₹95 Lakhs" style={{ width: '100%' }} {...register('budget')} />
+          </div>
+
+          {stage === 'called' && (
+            <div className="form-group">
+              <label className="form-label">Interest Status</label>
+              <select className="form-control" style={{ width: '100%' }} {...register('interest_status')}>
+                <option value="Interested">Interested</option>
+                <option value="Not Interested">Not Interested</option>
+              </select>
+              <span className="help-text">Called date &amp; time is stamped automatically on save.</span>
+            </div>
+          )}
+
+          {stage === 'qualified' && (
+            <>
+              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Contacted By</label>
+                  <input type="text" className="form-control" style={{ width: '100%' }} {...register('contacted_by')} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Next Follow-up Date</label>
+                  <input type="date" className="form-control" style={{ width: '100%' }} {...register('next_followup_date')} />
+                </div>
+              </div>
+              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Site Visit Status</label>
+                  <select className="form-control" style={{ width: '100%' }} {...register('site_visit_status')}>
+                    {SITE_VISIT_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Loan Requirement</label>
+                  <select className="form-control" style={{ width: '100%' }} {...register('loan_requirement')}>
+                    {LOAN_REQUIREMENTS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="form-group">
+                <label className="form-label">Remarks</label>
+                <input type="text" className="form-control" placeholder="e.g. Walk-in prospect, very keen on 3BHK" style={{ width: '100%' }} {...register('remarks')} />
+              </div>
+            </>
+          )}
+        </div>
+        <div className="dialog-footer">
+          <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>
+          <button type="submit" className="btn btn-primary" disabled={createMutation.isPending}>
+            {createMutation.isPending ? 'Saving...' : 'Register Lead'}
+          </button>
+        </div>
+      </form>
+    </dialog>
   );
 };
 
