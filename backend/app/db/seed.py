@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime
 from sqlalchemy import text, select
 from app.db.session import engine, Base, async_session_maker
-from app.models.models import Tenant, AuditLog, User, Lead, Customer, Booking
+from app.models.models import Tenant, AuditLog, User, Lead, Customer, Booking, PipelineLead, LeadSetting
 from app.core.security import get_password_hash
 
 # Dynamic DDLs lists
@@ -49,6 +49,54 @@ SCHEMA_TABLES_DDL = [
         history JSON DEFAULT '[]',
         documents JSON DEFAULT '[]'
     )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.pipeline_leads (
+        id VARCHAR(50) PRIMARY KEY,
+        date VARCHAR(50) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        phone VARCHAR(50) NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        source VARCHAR(100) NOT NULL,
+        project VARCHAR(255) NOT NULL,
+        budget VARCHAR(100) NULL,
+        stage VARCHAR(50) DEFAULT 'raw',
+        status VARCHAR(100) DEFAULT 'Pending Call',
+        interest_status VARCHAR(50) NULL,
+        called_at VARCHAR(50) NULL,
+        call_duration VARCHAR(50) NULL,
+        ai_outcome VARCHAR(255) NULL,
+        ai_summary VARCHAR(2000) NULL,
+        ai_confidence NUMERIC(4,2) NULL,
+        recording_available BOOLEAN DEFAULT FALSE,
+        call_attempts INTEGER DEFAULT 0,
+        last_call_attempt VARCHAR(50) NULL,
+        contacted_by VARCHAR(100) NULL,
+        remarks VARCHAR(1000) NULL,
+        site_visit_status VARCHAR(50) NULL,
+        loan_requirement VARCHAR(50) NULL,
+        next_followup_date VARCHAR(50) NULL,
+        linked_record_id VARCHAR(50) NULL,
+        history JSON DEFAULT '[]',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.import_batches (
+        id SERIAL PRIMARY KEY,
+        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        filename VARCHAR(255) NOT NULL,
+        total_rows INTEGER DEFAULT 0,
+        imported INTEGER DEFAULT 0,
+        duplicates INTEGER DEFAULT 0,
+        errors INTEGER DEFAULT 0,
+        uploaded_by VARCHAR(100) NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.lead_settings (
+        id SERIAL PRIMARY KEY,
+        dup_check_phone BOOLEAN DEFAULT TRUE,
+        dup_check_email BOOLEAN DEFAULT TRUE,
+        ai_calling_enabled BOOLEAN DEFAULT TRUE,
+        ai_call_interval_seconds INTEGER DEFAULT 45,
+        ai_retry_limit INTEGER DEFAULT 3,
+        ai_batch_size INTEGER DEFAULT 2
+    )""",
     """CREATE TABLE IF NOT EXISTS {schema}.bookings (
         bookingNo VARCHAR(50) PRIMARY KEY,
         customer_id VARCHAR(50) NOT NULL,
@@ -80,6 +128,17 @@ MOCK_LEADS = [
     {"name": "Karan Malhotra", "email": "karan.m@gmail.com", "phone": "9833456789", "project": "Royal Residency", "budget": "₹95 Lakhs", "source": "Newspaper", "executive": "Priya Patel", "status": "Qualified"},
     {"name": "Neha Gupta", "email": "neha.g@outlook.com", "phone": "9844567890", "project": "Sunrise Heights", "budget": "₹75 Lakhs", "source": "Direct Visit", "executive": "Amit Singh", "status": "Site Visit"},
     {"name": "Siddharth Roy", "email": "sid.roy@gmail.com", "phone": "9855678901", "project": "Green Meadows", "budget": "₹1.5 Crore", "source": "Social Media", "executive": "Priya Patel", "status": "Negotiation"}
+]
+
+MOCK_PIPELINE_LEADS = [
+    {"name": "Rohan Deshpande", "phone": "9861112233", "email": "rohan.d@gmail.com", "source": "Facebook Ads", "project": "Sunrise Heights", "budget": "₹90 Lakhs"},
+    {"name": "Ishita Banerjee", "phone": "9872223344", "email": "ishita.b@yahoo.com", "source": "MagicBricks", "project": "Green Meadows", "budget": "₹1.3 Crore"},
+    {"name": "Farhan Qureshi", "phone": "9883334455", "email": "farhan.q@outlook.com", "source": "99acres", "project": "Royal Residency", "budget": "₹1.1 Crore"},
+    {"name": "Tanvi Kulkarni", "phone": "9894445566", "email": "tanvi.k@gmail.com", "source": "Google Ads", "project": "Sunrise Heights", "budget": "₹78 Lakhs"},
+    {"name": "Manish Agarwal", "phone": "9905556677", "email": "manish.a@gmail.com", "source": "Website Form", "project": "Green Meadows", "budget": "₹1.6 Crore"},
+    {"name": "Sneha Reddy", "phone": "9916667788", "email": "sneha.r@hotmail.com", "source": "Facebook Ads", "project": "Royal Residency", "budget": "₹95 Lakhs"},
+    {"name": "Arjun Mehta", "phone": "9927778899", "email": "arjun.m@gmail.com", "source": "Housing.com", "project": "Sunrise Heights", "budget": "₹82 Lakhs"},
+    {"name": "Pooja Choudhary", "phone": "9938889900", "email": "pooja.c@yahoo.com", "source": "Website Form", "project": "Green Meadows", "budget": "₹1.2 Crore"},
 ]
 
 MOCK_CUSTOMERS = [
@@ -199,6 +258,30 @@ async def seed_all():
                         documents=["PAN Card", "Aadhaar Card"],
                         history=[{"date": now_date, "detail": "Customer registered dynamically."}]
                     ))
+
+            # Pipeline (Raw Leads) + workspace pipeline settings
+            res_pipe = await session.execute(select(PipelineLead))
+            if not res_pipe.scalars().all():
+                now_stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+                for idx, mp in enumerate(MOCK_PIPELINE_LEADS):
+                    session.add(PipelineLead(
+                        id=f"PL-{1001 + idx}",
+                        date=datetime.now().strftime("%Y-%m-%d"),
+                        name=mp["name"],
+                        phone=mp["phone"],
+                        email=mp["email"],
+                        source=mp["source"],
+                        project=mp["project"],
+                        budget=mp["budget"],
+                        stage="raw",
+                        status="Pending Call",
+                        call_attempts=0,
+                        history=[{"date": now_stamp, "action": "Raw lead registered via seed import", "user": "System"}]
+                    ))
+
+            res_settings = await session.execute(select(LeadSetting))
+            if not res_settings.scalars().all():
+                session.add(LeadSetting())
 
             # Bookings
             res_book = await session.execute(select(Booking))

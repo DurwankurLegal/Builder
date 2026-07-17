@@ -94,6 +94,75 @@ class Booking(Base):
     milestones = Column(JSON, default=list) # Milestones list
 
 
+class PipelineLead(Base):
+    """
+    Pre-sales lead pipeline record. A single row travels through the
+    lifecycle stages: raw -> called -> qualified -> (database | customer | rejected).
+    All call and qualification data accumulates on the same row so the full
+    lead context is preserved across stage movements.
+    """
+    __tablename__ = "pipeline_leads"
+
+    id = Column(String(50), primary_key=True)
+    date = Column(String(50), nullable=False)
+    name = Column(String(255), nullable=False)
+    phone = Column(String(50), nullable=False)
+    email = Column(String(255), nullable=False)
+    source = Column(String(100), nullable=False)
+    project = Column(String(255), nullable=False)
+    budget = Column(String(100), nullable=True)
+    stage = Column(String(50), default="raw")  # raw, called, qualified, rejected, database, customer
+    status = Column(String(100), default="Pending Call")  # stage-specific processing status
+
+    # AI calling data (populated when the AI agent completes a call)
+    interest_status = Column(String(50), nullable=True)  # Interested / Not Interested
+    called_at = Column(String(50), nullable=True)
+    call_duration = Column(String(50), nullable=True)
+    ai_outcome = Column(String(255), nullable=True)
+    ai_summary = Column(String(2000), nullable=True)
+    ai_confidence = Column(Numeric(4, 2), nullable=True)
+    recording_available = Column(Boolean, default=False)
+    call_attempts = Column(Integer, default=0)
+    last_call_attempt = Column(String(50), nullable=True)
+
+    # Sales qualification data (populated in the Qualified stage)
+    contacted_by = Column(String(100), nullable=True)
+    remarks = Column(String(1000), nullable=True)
+    site_visit_status = Column(String(50), nullable=True)  # Not Scheduled, Scheduled, Completed
+    loan_requirement = Column(String(50), nullable=True)  # Required, Not Required, Approved
+    next_followup_date = Column(String(50), nullable=True)
+
+    linked_record_id = Column(String(50), nullable=True)  # LD-/CUST- id created on transfer
+    history = Column(JSON, default=list)  # complete stage/audit activity trail
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ImportBatch(Base):
+    __tablename__ = "import_batches"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(DateTime, default=datetime.utcnow)
+    filename = Column(String(255), nullable=False)
+    total_rows = Column(Integer, default=0)
+    imported = Column(Integer, default=0)
+    duplicates = Column(Integer, default=0)
+    errors = Column(Integer, default=0)
+    uploaded_by = Column(String(100), nullable=False)
+
+
+class LeadSetting(Base):
+    """Per-tenant pipeline configuration (single row per tenant schema)."""
+    __tablename__ = "lead_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dup_check_phone = Column(Boolean, default=True)
+    dup_check_email = Column(Boolean, default=True)
+    ai_calling_enabled = Column(Boolean, default=True)
+    ai_call_interval_seconds = Column(Integer, default=45)
+    ai_retry_limit = Column(Integer, default=3)
+    ai_batch_size = Column(Integer, default=2)
+
+
 class AuditLog(Base):
     __tablename__ = "audit_logs"
     

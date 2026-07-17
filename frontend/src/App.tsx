@@ -8,6 +8,9 @@ import { MainLayout } from './layouts/MainLayout';
 const Login = React.lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Dashboard = React.lazy(() => import('./pages/Dashboard').then(m => ({ default: m.Dashboard })));
 const Leads = React.lazy(() => import('./pages/Leads').then(m => ({ default: m.Leads })));
+const RawLeads = React.lazy(() => import('./pages/RawLeads').then(m => ({ default: m.RawLeads })));
+const CalledLeads = React.lazy(() => import('./pages/CalledLeads').then(m => ({ default: m.CalledLeads })));
+const QualifiedLeads = React.lazy(() => import('./pages/QualifiedLeads').then(m => ({ default: m.QualifiedLeads })));
 const Customers = React.lazy(() => import('./pages/Customers').then(m => ({ default: m.Customers })));
 const Bookings = React.lazy(() => import('./pages/Bookings').then(m => ({ default: m.Bookings })));
 const LostDeals = React.lazy(() => import('./pages/LostDeals').then(m => ({ default: m.LostDeals })));
@@ -52,6 +55,9 @@ export const App = () => {
             <Route path="/" element={<RequireAuth><MainLayout /></RequireAuth>}>
               <Route index element={<Navigate to="/dashboard" replace />} />
               <Route path="dashboard" element={<Dashboard />} />
+              <Route path="raw-leads" element={<RawLeads />} />
+              <Route path="called-leads" element={<CalledLeads />} />
+              <Route path="qualified-leads" element={<QualifiedLeads />} />
               <Route path="leads" element={<Leads />} />
               <Route path="customers" element={<Customers />} />
               <Route path="bookings" element={<Bookings />} />

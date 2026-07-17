@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiClient } from '../config/api';
 import { useAuthStore } from '../store/authStore';
 import { useTenantStore } from '../store/tenantStore';
 import { useUIStore } from '../store/uiStore';
 import { ToastContainer } from '../components/ToastContainer';
 import { SearchModal } from '../components/SearchModal';
-import { 
-  LayoutDashboard, Users, ShieldAlert, CheckCircle2, XCircle, 
-  Calendar, BarChart4, Settings, ShieldCheck, Search, Moon, Sun, 
-  Palette, Bell, LogOut, Menu, User
+import {
+  LayoutDashboard, Users, ShieldAlert, CheckCircle2, XCircle,
+  Calendar, BarChart4, Settings, ShieldCheck, Search, Moon, Sun,
+  Palette, Bell, LogOut, Menu, User, Inbox, PhoneCall, BadgeCheck
 } from 'lucide-react';
 
 export const MainLayout = () => {
@@ -32,8 +34,18 @@ export const MainLayout = () => {
   // Router matching paths to highlights
   const activePath = location.pathname;
 
-  const sidebarLinks = [
+  // Live pipeline counts shown as nav badges beside each lead module
+  const { data: pipelineStats } = useQuery({
+    queryKey: ['pipeline-stats', activeTenantId],
+    queryFn: async () => (await apiClient.get('/pipeline/stats')).data,
+    refetchInterval: 15000
+  });
+
+  const sidebarLinks: { label: string; path: string; icon: any; count?: number }[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
+    { label: 'Raw Leads', path: '/raw-leads', icon: Inbox, count: pipelineStats?.raw },
+    { label: 'Called Leads', path: '/called-leads', icon: PhoneCall, count: pipelineStats?.called },
+    { label: 'Qualified Leads', path: '/qualified-leads', icon: BadgeCheck, count: pipelineStats?.qualified },
     { label: 'Leads Database', path: '/leads', icon: Users },
     { label: 'Active Customers', path: '/customers', icon: ShieldCheck },
     { label: 'Closed Bookings', path: '/bookings', icon: CheckCircle2 },
@@ -108,6 +120,24 @@ export const MainLayout = () => {
                   <Link to={link.path} onClick={() => setSidebarMobileOpen(false)}>
                     <Icon size={18} />
                     {!sidebarCollapsed && <span className="sidebar-item-label">{link.label}</span>}
+                    {!sidebarCollapsed && link.count != null && link.count > 0 && (
+                      <span style={{
+                        marginLeft: 'auto',
+                        backgroundColor: isActive ? 'rgba(255,255,255,0.25)' : 'var(--brand-primary)',
+                        color: '#fff',
+                        borderRadius: 'var(--radius-full)',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        minWidth: '20px',
+                        height: '18px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        padding: '0 6px'
+                      }}>
+                        {link.count}
+                      </span>
+                    )}
                   </Link>
                 </li>
               );

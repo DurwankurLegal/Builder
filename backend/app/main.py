@@ -1,3 +1,4 @@
+import asyncio
 import time
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,6 +81,13 @@ async def metrics_endpoint():
 # Include API Routers
 from app.api.v1.api import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
+
+# AI Calling Agent background worker (sweeps Raw Leads across all tenants)
+from app.services.ai_agent import worker_loop
+
+@app.on_event("startup")
+async def start_ai_calling_agent():
+    asyncio.create_task(worker_loop())
 
 # Main router entry points
 @app.get("/", tags=["Root"])

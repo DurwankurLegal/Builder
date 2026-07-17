@@ -80,6 +80,127 @@ class LeadResponse(BaseModel):
 
 
 # ========================================================
+# PIPELINE LEAD SCHEMAS (Raw / Called / Qualified modules)
+# ========================================================
+
+class PipelineLeadCreate(BaseModel):
+    name: str
+    phone: str
+    email: EmailStr
+    source: str
+    project: str
+    budget: Optional[str] = None
+
+class PipelineLeadUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[EmailStr] = None
+    source: Optional[str] = None
+    project: Optional[str] = None
+    budget: Optional[str] = None
+    status: Optional[str] = None
+    interest_status: Optional[str] = None
+    contacted_by: Optional[str] = None
+    remarks: Optional[str] = None
+    site_visit_status: Optional[str] = None
+    loan_requirement: Optional[str] = None
+    next_followup_date: Optional[str] = None
+
+class PipelineLeadResponse(BaseModel):
+    id: str
+    date: str
+    name: str
+    phone: str
+    email: str
+    source: str
+    project: str
+    budget: Optional[str] = None
+    stage: str
+    status: str
+    interest_status: Optional[str] = None
+    called_at: Optional[str] = None
+    call_duration: Optional[str] = None
+    ai_outcome: Optional[str] = None
+    ai_summary: Optional[str] = None
+    ai_confidence: Optional[float] = None
+    recording_available: bool = False
+    call_attempts: int = 0
+    last_call_attempt: Optional[str] = None
+    contacted_by: Optional[str] = None
+    remarks: Optional[str] = None
+    site_visit_status: Optional[str] = None
+    loan_requirement: Optional[str] = None
+    next_followup_date: Optional[str] = None
+    linked_record_id: Optional[str] = None
+    history: List[Any]
+
+    class Config:
+        from_attributes = True
+
+class PipelineLeadPage(BaseModel):
+    items: List[PipelineLeadResponse]
+    total: int
+    page: int
+    pages: int
+
+class PipelineStats(BaseModel):
+    raw: int
+    called: int
+    qualified: int
+
+class BulkMoveRequest(BaseModel):
+    ids: List[str]
+    target: str  # called, qualified, rejected, database, customer
+
+class BulkMoveResult(BaseModel):
+    moved: int
+    skipped: int
+    detail: str
+
+class ImportBatchResponse(BaseModel):
+    id: int
+    date: datetime
+    filename: str
+    total_rows: int
+    imported: int
+    duplicates: int
+    errors: int
+    uploaded_by: str
+
+    class Config:
+        from_attributes = True
+
+class LeadSettingResponse(BaseModel):
+    dup_check_phone: bool
+    dup_check_email: bool
+    ai_calling_enabled: bool
+    ai_call_interval_seconds: int
+    ai_retry_limit: int
+    ai_batch_size: int
+
+    class Config:
+        from_attributes = True
+
+class LeadSettingUpdate(BaseModel):
+    dup_check_phone: Optional[bool] = None
+    dup_check_email: Optional[bool] = None
+    ai_calling_enabled: Optional[bool] = None
+    ai_call_interval_seconds: Optional[int] = None
+    ai_retry_limit: Optional[int] = None
+    ai_batch_size: Optional[int] = None
+
+class AICallResult(BaseModel):
+    lead_id: str
+    success: bool
+    interest_status: Optional[str] = None   # Interested / Not Interested
+    duration_seconds: Optional[int] = None
+    outcome: Optional[str] = None
+    summary: Optional[str] = None
+    confidence: Optional[float] = None
+    budget: Optional[str] = None
+
+
+# ========================================================
 # CUSTOMER SCHEMAS
 # ========================================================
 
