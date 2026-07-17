@@ -7,7 +7,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import {
   Plus, Upload, History, XCircle, PhoneForwarded, Star, UserCheck,
-  Trash2, Bot, Settings2, Zap
+  Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet
 } from 'lucide-react';
 import {
   usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
@@ -171,14 +171,22 @@ export const RawLeads = () => {
     setProjectFilter(p.project || ''); setStatusFilter(p.lead_status || ''); setPage(1);
   };
 
-  const downloadTemplate = () => {
-    const csv = 'name,phone,email,source,project,budget\nSample Lead,9876543210,sample@gmail.com,Website Form,Sunrise Heights,₹90 Lakhs\n';
-    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = 'raw_leads_template.csv';
-    link.click();
-    URL.revokeObjectURL(url);
+  const downloadTemplate = async (format: 'csv' | 'xlsx') => {
+    try {
+      const res = await apiClient.get('/pipeline/import-template', {
+        params: { format },
+        responseType: 'blob'
+      });
+      const url = URL.createObjectURL(res.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `raw_leads_template.${format}`;
+      link.click();
+      URL.revokeObjectURL(url);
+      showToast(`${format === 'xlsx' ? 'Excel' : 'CSV'} template downloaded.`, 'success');
+    } catch {
+      showToast('Template download failed.', 'danger');
+    }
   };
 
   const statusBadge = (lead: PipelineLead) => {
@@ -393,11 +401,16 @@ export const RawLeads = () => {
               className="form-control"
               style={{ width: '100%', padding: 'var(--spacing-3)' }}
             />
-            <button className="btn btn-ghost" style={{ alignSelf: 'flex-start', fontSize: 'var(--font-size-xs)' }} onClick={downloadTemplate}>
-              Download CSV template
-            </button>
+            <div style={{ display: 'flex', gap: 'var(--spacing-2)', flexWrap: 'wrap' }}>
+              <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => downloadTemplate('csv')}>
+                <Download size={13} style={{ marginRight: '4px' }} /> Download CSV Template
+              </button>
+              <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => downloadTemplate('xlsx')}>
+                <FileSpreadsheet size={13} style={{ marginRight: '4px' }} /> Download Excel Template
+              </button>
+            </div>
             {uploadResult && (
-              <div className="card" style={{ background: 'var(--bg-muted)' }}>
+              <div className="card" style={{ background: 'var(--bg-muted)', maxHeight: '220px', overflowY: 'auto' }}>
                 <p style={{ fontSize: 'var(--font-size-sm)' }}>
                   <b>{uploadResult.filename}</b>: {uploadResult.total_rows} rows —{' '}
                   <span style={{ color: 'var(--color-success)' }}>{uploadResult.imported} imported</span>,{' '}
@@ -405,9 +418,20 @@ export const RawLeads = () => {
                   <span style={{ color: 'var(--color-danger)' }}>{uploadResult.errors} errors</span>
                 </p>
                 {uploadResult.error_details?.length > 0 && (
-                  <ul style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: 'var(--spacing-2)', paddingLeft: 'var(--spacing-4)' }}>
-                    {uploadResult.error_details.map((e: string, i: number) => <li key={i}>{e}</li>)}
-                  </ul>
+                  <>
+                    <p style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-danger)', marginTop: 'var(--spacing-2)' }}>Validation errors</p>
+                    <ul style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', paddingLeft: 'var(--spacing-4)' }}>
+                      {uploadResult.error_details.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                    </ul>
+                  </>
+                )}
+                {uploadResult.duplicate_details?.length > 0 && (
+                  <>
+                    <p style={{ fontSize: 'var(--font-size-xs)', fontWeight: 600, color: 'var(--color-warning)', marginTop: 'var(--spacing-2)' }}>Duplicates blocked</p>
+                    <ul style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', paddingLeft: 'var(--spacing-4)' }}>
+                      {uploadResult.duplicate_details.map((e: string, i: number) => <li key={i}>{e}</li>)}
+                    </ul>
+                  </>
                 )}
               </div>
             )}

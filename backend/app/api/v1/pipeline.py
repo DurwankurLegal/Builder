@@ -2,9 +2,10 @@ import csv
 import io
 import math
 import random
+import re
 import struct
 import wave
-from datetime import datetime
+from datetime import datetime, date
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile, File, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -232,8 +233,25 @@ async def bulk_move_leads(
 # BULK IMPORT / EXPORT / IMPORT HISTORY
 # ========================================================
 
+def _cell_to_text(value) -> str:
+    """
+    Normalizes an Excel cell to clean text. Integral floats (how Excel stores
+    typed-in numbers like phone digits) become plain digit strings instead of
+    '9876543210.0' or scientific notation; date cells become YYYY-MM-DD.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    if isinstance(value, (datetime, date)):
+        return value.strftime("%Y-%m-%d")
+    return str(value).strip()
+
+
 def _parse_rows(filename: str, content: bytes) -> List[dict]:
-    """Parses CSV or Excel uploads into normalized dict rows."""
+    """Parses CSV or Excel uploads into normalized dict rows (shared workflow)."""
     rows: List[dict] = []
     if filename.lower().endswith((".xlsx", ".xls")):
         from openpyxl import load_workbook
@@ -244,14 +262,44 @@ def _parse_rows(filename: str, content: bytes) -> List[dict]:
             if idx == 0:
                 headers = [str(h or "").strip().lower().replace(" ", "_") for h in row]
                 continue
-            rows.append({headers[i]: (str(v).strip() if v is not None else "") for i, v in enumerate(row) if i < len(headers)})
+            parsed = {headers[i]: _cell_to_text(v) for i, v in enumerate(row) if i < len(headers)}
+            if any(v for v in parsed.values()):  # skip fully blank spreadsheet rows
+                rows.append(parsed)
         wb.close()
     else:
         text_content = content.decode("utf-8-sig", errors="replace")
         reader = csv.DictReader(io.StringIO(text_content))
         for row in reader:
-            rows.append({(k or "").strip().lower().replace(" ", "_"): (v or "").strip() for k, v in row.items()})
+            parsed = {(k or "").strip().lower().replace(" ", "_"): (v or "").strip() for k, v in row.items()}
+            if any(v for v in parsed.values()):
+                rows.append(parsed)
     return rows
+
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _validate_import_row(row: dict) -> tuple[dict | None, str | None]:
+    """
+    Common validation applied to every imported row regardless of file format.
+    Returns (normalized_fields, None) on success or (None, reason) on failure.
+    """
+    name = (row.get("name") or "").strip()
+    phone = str(row.get("phone") or row.get("phone_number") or row.get("mobile") or "").strip()
+    email = (row.get("email") or row.get("email_id") or "").strip()
+
+    if not name:
+        return None, "missing name"
+    if len(name) < 3:
+        return None, f"name '{name}' is too short (min 3 characters)"
+    if not phone:
+        return None, "missing phone number"
+    if len(pipeline_service.normalize_phone(phone)) < 10:
+        return None, f"invalid phone number '{phone}' (needs at least 10 digits)"
+    if email and not EMAIL_RE.match(email):
+        return None, f"invalid email address '{email}'"
+
+    return {"name": name, "phone": phone, "email": email}, None
 
 
 @router.post("/import")
@@ -279,28 +327,28 @@ async def bulk_import_leads(
     settings_row = await pipeline_service.get_settings(db)
     imported, duplicates, errors = 0, 0, 0
     error_details = []
+    duplicate_details = []
 
     for idx, row in enumerate(rows, start=2):
-        name = row.get("name", "")
-        phone = row.get("phone") or row.get("phone_number") or row.get("mobile", "")
-        email = row.get("email") or row.get("email_id", "")
-        if not name or not phone:
+        fields, problem = _validate_import_row(row)
+        if problem:
             errors += 1
-            error_details.append(f"row {idx}: missing name/phone")
+            error_details.append(f"Row {idx}: {problem}")
             continue
 
-        clash = await pipeline_service.find_duplicate(db, phone, email, settings_row)
+        clash = await pipeline_service.find_duplicate(db, fields["phone"], fields["email"], settings_row)
         if clash:
             duplicates += 1
+            duplicate_details.append(f"Row {idx} ({fields['name']}): {clash}")
             continue
 
         new_id = await pipeline_service.next_pipeline_id(db)
         lead = PipelineLead(
             id=new_id,
             date=row.get("date") or datetime.now().strftime("%Y-%m-%d"),
-            name=name,
-            phone=phone,
-            email=email or f"unknown+{new_id.lower()}@leads.import",
+            name=fields["name"],
+            phone=fields["phone"],
+            email=fields["email"] or f"unknown+{new_id.lower()}@leads.import",
             source=row.get("source") or "Bulk Import",
             project=row.get("project") or row.get("project_name") or "Unassigned",
             budget=row.get("budget") or None,
@@ -330,8 +378,78 @@ async def bulk_import_leads(
     await db.commit()
     return {
         "filename": file.filename, "total_rows": len(rows), "imported": imported,
-        "duplicates": duplicates, "errors": errors, "error_details": error_details[:10]
+        "duplicates": duplicates, "errors": errors,
+        "error_details": error_details[:20], "duplicate_details": duplicate_details[:20]
     }
+
+
+# Identical column order and sample data for BOTH template formats
+TEMPLATE_COLUMNS = ["name", "phone", "email", "source", "project", "budget"]
+TEMPLATE_SAMPLE_ROWS = [
+    ["Sample Lead", "9876543210", "sample@gmail.com", "Website Form", "Sunrise Heights", "₹90 Lakhs"],
+    ["Asha Verma", "09123456789", "asha.verma@yahoo.com", "MagicBricks", "Green Meadows", "₹1.2 Crore"],
+]
+
+
+@router.get("/import-template")
+async def download_import_template(
+    format: str = "csv",
+    user=Depends(get_current_user)
+):
+    """
+    Serves the bulk-import template. Both formats share the same columns,
+    order, and sample data; the Excel variant formats the phone column as
+    text so leading zeros survive and long numbers never collapse into
+    scientific notation.
+    """
+    if format == "xlsx":
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, PatternFill
+        from openpyxl.utils import get_column_letter
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Raw Leads Import"
+
+        header_font = Font(bold=True, color="FFFFFF")
+        header_fill = PatternFill(start_color="4F46E5", end_color="4F46E5", fill_type="solid")
+        for col_idx, header in enumerate(TEMPLATE_COLUMNS, start=1):
+            cell = ws.cell(row=1, column=col_idx, value=header)
+            cell.font = header_font
+            cell.fill = header_fill
+            ws.column_dimensions[get_column_letter(col_idx)].width = 22
+
+        phone_col = TEMPLATE_COLUMNS.index("phone") + 1
+        for row_idx, sample in enumerate(TEMPLATE_SAMPLE_ROWS, start=2):
+            for col_idx, value in enumerate(sample, start=1):
+                cell = ws.cell(row=row_idx, column=col_idx, value=value)
+                if col_idx == phone_col:
+                    cell.number_format = "@"
+
+        # Pre-format the phone column as text for the next ~500 data rows so
+        # values typed or pasted by the user keep leading zeros as well.
+        for row_idx in range(2, 502):
+            ws.cell(row=row_idx, column=phone_col).number_format = "@"
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={"Content-Disposition": "attachment; filename=raw_leads_template.xlsx"}
+        )
+
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(TEMPLATE_COLUMNS)
+    for sample in TEMPLATE_SAMPLE_ROWS:
+        writer.writerow(sample)
+    return Response(
+        content=out.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=raw_leads_template.csv"}
+    )
 
 
 @router.get("/imports", response_model=List[ImportBatchResponse])
