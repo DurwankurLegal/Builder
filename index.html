@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Builder CRM — Premium SaaS Dashboard</title>
+  <meta name="description" content="Modern enterprise real estate CRM UI for managing leads, deals, customers and follow-ups.">
+  
+  <!-- Premium Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  
+  <!-- CSS Stylesheets (Cascade Layers) -->
+  <link rel="stylesheet" href="css/tokens.css">
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/layout.css">
+  <link rel="stylesheet" href="css/components.css">
+  <link rel="stylesheet" href="css/pages.css">
+
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+  <!-- Sidebar mobile layout overlay drawer -->
+  <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
+  <!-- Primary App shell structure -->
+  <div class="app-shell">
+    
+    <!-- LEFT SIDEBAR NAVIGATION -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="sidebar-logo">
+          <i class="lucide-home sidebar-logo-icon" data-lucide="home"></i>
+          <span class="sidebar-logo-text">Builder CRM</span>
+        </div>
+        <button class="sidebar-toggle-btn" id="sidebar-toggle" aria-label="Toggle Sidebar Navigation">
+          <i class="lucide-align-justify" data-lucide="align-justify"></i>
+        </button>
+      </div>
+
+      <nav class="sidebar-menu">
+        <ul style="list-style: none; display: flex; flex-direction: column; gap: var(--spacing-1);">
+          <li class="sidebar-item" id="nav-dashboard">
+            <a href="#dashboard">
+              <i class="lucide-layout-dashboard" data-lucide="layout-dashboard"></i>
+              <span class="sidebar-item-label">Dashboard</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-leads">
+            <a href="#leads">
+              <i class="lucide-users" data-lucide="users"></i>
+              <span class="sidebar-item-label">Leads Database</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-customers">
+            <a href="#customers">
+              <i class="lucide-shield-check" data-lucide="shield-check"></i>
+              <span class="sidebar-item-label">Active Customers</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-deal-closed">
+            <a href="#deal-closed">
+              <i class="lucide-sparkles" data-lucide="sparkles"></i>
+              <span class="sidebar-item-label">Closed Bookings</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-deal-lost">
+            <a href="#deal-lost">
+              <i class="lucide-frown" data-lucide="frown"></i>
+              <span class="sidebar-item-label">Lost Deals</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-followups">
+            <a href="#followups">
+              <i class="lucide-calendar-days" data-lucide="calendar-days"></i>
+              <span class="sidebar-item-label">Follow-ups</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-reports">
+            <a href="#reports">
+              <i class="lucide-line-chart" data-lucide="line-chart"></i>
+              <span class="sidebar-item-label">Analytical Reports</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-settings">
+            <a href="#settings">
+              <i class="lucide-settings" data-lucide="settings"></i>
+              <span class="sidebar-item-label">System Settings</span>
+            </a>
+          </li>
+          <li class="sidebar-item" id="nav-admin">
+            <a href="#admin">
+              <i class="lucide-lock" data-lucide="lock"></i>
+              <span class="sidebar-item-label">Admin Console</span>
+            </a>
+          </li>
+        </ul>
+      </nav>
+    </aside>
+
+    <!-- TOP HEADER NAVBAR -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle-btn" aria-label="Open Navigation Menu">
+          <i class="lucide-menu" data-lucide="menu"></i>
+        </button>
+        <!-- Breadcrumb tracker -->
+        <nav class="breadcrumb" id="breadcrumb" aria-label="Breadcrumb Navigation"></nav>
+
+        <!-- Multi-Tenant Selector dropdown indicator -->
+        <div style="margin-left: var(--spacing-4); border-left: 1px solid var(--border-color); padding-left: var(--spacing-4); display: flex; align-items: center; gap: var(--spacing-2);">
+          <span style="font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--text-muted); text-transform: uppercase;">Workspace:</span>
+          <select id="topbar-tenant-select" style="background-color: var(--bg-muted); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px var(--spacing-2); color: var(--text-main); font-family: inherit; font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); cursor: pointer; outline: none;">
+            <option value="tenant-1">Prestige Group</option>
+            <option value="tenant-2">DLF Limited</option>
+            <option value="tenant-3">LODHA Group</option>
+            <option value="tenant-4">Sobha Developers</option>
+            <option value="tenant-5">Godrej Properties</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="topbar-right">
+        <!-- Command Search Trigger -->
+        <button class="search-trigger-btn" id="search-trigger" aria-label="Global Search DB">
+          <i class="lucide-search" data-lucide="search"></i>
+          <span>Search CRM...</span>
+          <kbd class="search-kbd">⌘K</kbd>
+        </button>
+
+        <!-- Light/Dark Mode Switcher -->
+        <button class="action-icon-btn" id="theme-toggle-btn" aria-label="Toggle Interface Theme">
+          <i class="lucide-moon" data-lucide="moon"></i>
+        </button>
+
+        <!-- Palette Style Selector -->
+        <div style="display: flex; align-items: center; gap: var(--spacing-1);">
+          <i class="lucide-palette" data-lucide="palette" style="font-size: 14px; color: var(--text-muted); margin-right: 2px;"></i>
+          <select id="topbar-style-select" style="background-color: var(--bg-muted); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 4px var(--spacing-2); color: var(--text-main); font-family: inherit; font-size: var(--font-size-xs); font-weight: var(--font-weight-semibold); cursor: pointer; outline: none;" aria-label="Select Branding Palette">
+            <option value="indigo">Corporate Indigo</option>
+            <option value="emerald">Emerald Garden</option>
+            <option value="amber">Sunset Terracotta</option>
+            <option value="violet">Royal Amethyst</option>
+            <option value="midnight">Midnight Gold (Dark)</option>
+          </select>
+        </div>
+
+        <!-- Notification Panel trigger -->
+        <button class="action-icon-btn" id="notify-btn" aria-label="Show Alerts Notifications">
+          <i class="lucide-bell" data-lucide="bell"></i>
+          <span class="btn-badge">3</span>
+          
+          <!-- Dropdown menu -->
+          <div class="dropdown-menu" id="notify-dropdown">
+            <div class="dropdown-item">
+              <div>
+                <div style="font-weight: 600;">New lead registered</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Divya Sen registered via Facebook</div>
+              </div>
+            </div>
+            <div class="dropdown-item">
+              <div>
+                <div style="font-weight: 600;">Site Visit Completed</div>
+                <div style="font-size: 11px; color: var(--text-muted);">Aarav Mehta visited tower B flat 503</div>
+              </div>
+            </div>
+            <div class="dropdown-item">
+              <div>
+                <div style="font-weight: 600;">Milestone Payment Overdue</div>
+                <div style="font-size: 11px; color: var(--text-muted);">BK-9001 (Kabir Malhotra) 5th floor slab payment</div>
+              </div>
+            </div>
+          </div>
+        </button>
+
+        <!-- Profile trigger -->
+        <div class="profile-menu-container">
+          <button class="profile-trigger" id="profile-trigger" aria-label="Account Settings menu">
+            <div class="avatar" style="background-color: var(--brand-bg-light); color: var(--brand-primary); display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem;">
+              RM
+            </div>
+          </button>
+          
+          <!-- Profile dropdown -->
+          <div class="dropdown-menu" id="profile-dropdown">
+            <div class="dropdown-item" onclick="window.location.hash='#settings'">
+              <i class="lucide-user" data-lucide="user"></i> Account Profile
+            </div>
+            <div class="dropdown-item" onclick="window.location.hash='#settings'">
+              <i class="lucide-settings" data-lucide="settings"></i> System Settings
+            </div>
+            <div class="dropdown-divider"></div>
+            <div class="dropdown-item danger" onclick="window.CRM_APP.showToast('Sign out emulation triggered.', 'info')">
+              <i class="lucide-log-out" data-lucide="log-out"></i> Log Out
+            </div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN SCROLLABLE CONTENT BODY -->
+    <main class="main-content" id="app-content"></main>
+
+  </div>
+
+  <!-- Reusable Global Overlay Modal element -->
+  <dialog id="global-dialog" closedby="any" aria-labelledby="dialogTitle"></dialog>
+
+  <!-- Reusable Toast notifications alerts stack -->
+  <div class="toast-container" id="toast-container"></div>
+
+  <!-- JS Logic Files (Modular order) -->
+  <script src="js/data.js"></script>
+  <script src="js/router.js"></script>
+  
+  <script src="js/dashboard.js"></script>
+  <script src="js/leads.js"></script>
+  <script src="js/customers.js"></script>
+  <script src="js/deal-closed.js"></script>
+  <script src="js/deal-lost.js"></script>
+  <script src="js/followups.js"></script>
+  <script src="js/reports.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/admin.js"></script>
+  
+  <script src="js/app.js"></script>
+</body>
+</html>
