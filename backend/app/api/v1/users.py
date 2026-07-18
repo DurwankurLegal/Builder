@@ -21,7 +21,9 @@ from app.api.deps import (
     get_db, require_user_admin, require_super_admin, client_ip,
     SUPER_ADMIN, TENANT_ADMIN
 )
-from app.db.session import async_session_maker, resolve_schema
+from app.db.session import (
+    async_session_maker, resolve_schema, InvalidTenantError, schema_exists
+)
 from app.models.models import User, Tenant, AuditLog
 from app.schemas.schemas import (
     AdminUserCreate, AdminUserUpdate, AdminUserResponse, PasswordResetRequest,
@@ -99,8 +101,17 @@ async def list_users_all_tenants(
 
     groups: List[dict] = []
     for tenant in tenants:
-        schema = resolve_schema(tenant.id)
+        # A directory entry can exist without a usable schema (e.g. a tenant
+        # created with an id that isn't a valid identifier). Skip those rather
+        # than failing the whole listing.
+        try:
+            schema = resolve_schema(tenant.id)
+        except InvalidTenantError:
+            continue
+
         async with async_session_maker() as session:
+            if not await schema_exists(session, schema):
+                continue
             await session.execute(text(f"SET search_path TO {schema}, public"))
             res = await session.execute(select(User).order_by(User.id))
             users = res.scalars().all()

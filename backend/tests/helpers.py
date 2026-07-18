@@ -11,9 +11,9 @@ DEFAULT_TENANT = "tenant-1"
 # genuine, existing schema, so isolation tests still exercise the token-binding
 # code path rather than short-circuiting on "unknown workspace".
 ALT_TENANT = "public"
-# A workspace that no longer exists - used to assert removed/unknown tenants
-# are rejected instead of silently falling through to `public`.
-REMOVED_TENANT = "tenant-2"
+# A workspace that is never provisioned - used to assert unknown tenants are
+# rejected instead of silently falling through to `public`.
+REMOVED_TENANT = "tenant-99"
 
 
 def rand_phone() -> str:

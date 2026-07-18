@@ -48,7 +48,7 @@ def resolve_schema(tenant_id: str) -> str:
 _verified_schemas: set[str] = {"public"}
 
 
-async def _schema_exists(session: AsyncSession, schema: str) -> bool:
+async def schema_exists(session: AsyncSession, schema: str) -> bool:
     if schema in _verified_schemas:
         return True
     result = await session.execute(
@@ -70,7 +70,7 @@ async def get_db_session(tenant_id: str = "public") -> AsyncSession:
     safe_schema = resolve_schema(tenant_id)
     session = async_session_maker()
     try:
-        if not await _schema_exists(session, safe_schema):
+        if not await schema_exists(session, safe_schema):
             raise InvalidTenantError(f"Unknown workspace: {tenant_id!r}")
         # safe_schema is validated against a strict allowlist regex above
         await session.execute(text(f"SET search_path TO {safe_schema}, public"))

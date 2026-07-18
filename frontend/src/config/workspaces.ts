@@ -13,6 +13,10 @@ export interface Workspace {
 
 export const WORKSPACES: Workspace[] = [
   { id: 'tenant-1', name: 'Prestige Group' },
+  { id: 'tenant-2', name: 'DLF Limited' },
+  { id: 'tenant-3', name: 'LODHA Group' },
+  { id: 'tenant-4', name: 'Sobha Developers' },
+  { id: 'tenant-5', name: 'Godrej Properties' },
 ];
 
 export const DEFAULT_WORKSPACE = WORKSPACES[0];

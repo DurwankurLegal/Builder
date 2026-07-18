@@ -136,6 +136,10 @@ USER_COLUMN_MIGRATIONS = [
 # workspace list (frontend/src/config/workspaces.ts).
 TENANTS_SEED = [
     {"id": "tenant-1", "name": "Prestige Group", "subdomain": "prestige", "tier": "Enterprise", "userQuota": 150, "storageQuota": 100},
+    {"id": "tenant-2", "name": "DLF Limited", "subdomain": "dlf", "tier": "Enterprise", "userQuota": 200, "storageQuota": 150},
+    {"id": "tenant-3", "name": "LODHA Group", "subdomain": "lodha", "tier": "Professional", "userQuota": 50, "storageQuota": 50},
+    {"id": "tenant-4", "name": "Sobha Developers", "subdomain": "sobha", "tier": "Professional", "userQuota": 40, "storageQuota": 40},
+    {"id": "tenant-5", "name": "Godrej Properties", "subdomain": "godrej", "tier": "Basic", "userQuota": 10, "storageQuota": 10},
 ]
 
 # Shared Mock Datasets
@@ -189,28 +193,37 @@ async def seed_all():
     async with async_session as session:
         await session.execute(text("SET search_path TO public"))
         
-        # Check if tenants seeded
+        # Reconcile the tenant directory: insert any configured workspace that
+        # is missing. Checking per-tenant (rather than "is the table empty")
+        # keeps the directory in step with the provisioned schemas when a
+        # workspace is added back later.
         res = await session.execute(select(Tenant))
-        if not res.scalars().all():
-            for t_data in TENANTS_SEED:
-                tenant = Tenant(
-                    id=t_data["id"],
-                    name=t_data["name"],
-                    subdomain=t_data["subdomain"],
-                    tier=t_data["tier"],
-                    userQuota=t_data["userQuota"],
-                    storageQuota=t_data["storageQuota"],
-                    storageUsed=0.35,
-                    brandingColor="#4f46e5",
-                    status="Active"
-                )
-                session.add(tenant)
-            
+        existing_ids = {t.id for t in res.scalars().all()}
+        first_run = not existing_ids
+
+        for t_data in TENANTS_SEED:
+            if t_data["id"] in existing_ids:
+                continue
+            session.add(Tenant(
+                id=t_data["id"],
+                name=t_data["name"],
+                subdomain=t_data["subdomain"],
+                tier=t_data["tier"],
+                userQuota=t_data["userQuota"],
+                storageQuota=t_data["storageQuota"],
+                storageUsed=0.35,
+                brandingColor="#4f46e5",
+                status="Active"
+            ))
+            print(f"Registered workspace in tenant directory: {t_data['id']}")
+
+        if first_run:
             # Initial audit logs
             session.add(AuditLog(tenant="System", user="Super Admin", action="Initial database schema bootstrapped successfully.", ip="127.0.0.1"))
             session.add(AuditLog(tenant="Prestige Group", user="System", action="Workspace credentials provisioned.", ip="127.0.0.1"))
-            await session.commit()
-            print("Seeded public tenants directory.")
+
+        await session.commit()
+        print("Tenant directory reconciled.")
 
     # 3. Spawn and seed each tenant schema
     for tenant_seed in TENANTS_SEED:
