@@ -82,12 +82,22 @@ async def metrics_endpoint():
 from app.api.v1.api import api_router
 app.include_router(api_router, prefix=settings.API_V1_STR)
 
-# AI Calling Agent background worker (sweeps Raw Leads across all tenants)
+# AI Calling Agent background worker (sweeps Raw Leads across all tenants).
+# Under a multi-worker server every process would start its own loop and dial
+# the same leads repeatedly, so the worker is opt-in and must run in exactly
+# one process. Set RUN_AI_AGENT=1 on a single instance (see deploy/README).
+import os
 from app.services.ai_agent import worker_loop
+
+RUN_AI_AGENT = os.getenv("RUN_AI_AGENT", "1").lower() in ("1", "true", "yes")
 
 @app.on_event("startup")
 async def start_ai_calling_agent():
-    asyncio.create_task(worker_loop())
+    if RUN_AI_AGENT:
+        logger.info("AI Calling Agent worker enabled in this process.")
+        asyncio.create_task(worker_loop())
+    else:
+        logger.info("AI Calling Agent worker disabled in this process (RUN_AI_AGENT=0).")
 
 # Main router entry points
 @app.get("/", tags=["Root"])
