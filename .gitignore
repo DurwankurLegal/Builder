@@ -23,3 +23,6 @@ venv/
 
 # Production secrets - never commit
 deploy/.env
+
+# ...but the template MUST ship (the .env.* rule above would swallow it)
+!deploy/.env.example
