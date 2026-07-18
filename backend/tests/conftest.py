@@ -52,7 +52,7 @@ def pause_ai_agent():
     """
     with httpx.Client(base_url=BASE_URL, timeout=30) as c:
         restore = {}
-        for tenant in (DEFAULT_TENANT, ALT_TENANT):
+        for tenant in (DEFAULT_TENANT,):
             token = _login(c, tenant)
             h = {"Authorization": f"Bearer {token}", "X-Tenant-ID": tenant}
             prev = c.get(f"{API}/pipeline/settings", headers=h).json()

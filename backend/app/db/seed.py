@@ -1,9 +1,15 @@
 import asyncio
+import os
 from datetime import datetime
 from sqlalchemy import text, select
 from app.db.session import engine, Base, async_session_maker
 from app.models.models import Tenant, AuditLog, User, Lead, Customer, Booking, PipelineLead, LeadSetting
 from app.core.security import get_password_hash
+
+# Demo leads/customers/bookings are opt-in so re-running the seed never
+# resurrects sample data in a workspace that has been deliberately cleaned.
+# Schemas, tables, users and settings are always provisioned.
+SEED_DEMO_DATA = os.getenv("SEED_DEMO_DATA", "0").lower() in ("1", "true", "yes")
 
 # Dynamic DDLs lists
 SCHEMA_TABLES_DDL = [
@@ -126,12 +132,10 @@ USER_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP NULL",
 ]
 
+# Workspaces provisioned by the seed. Must stay in step with the frontend
+# workspace list (frontend/src/config/workspaces.ts).
 TENANTS_SEED = [
     {"id": "tenant-1", "name": "Prestige Group", "subdomain": "prestige", "tier": "Enterprise", "userQuota": 150, "storageQuota": 100},
-    {"id": "tenant-2", "name": "DLF Limited", "subdomain": "dlf", "tier": "Enterprise", "userQuota": 200, "storageQuota": 150},
-    {"id": "tenant-3", "name": "LODHA Group", "subdomain": "lodha", "tier": "Professional", "userQuota": 50, "storageQuota": 50},
-    {"id": "tenant-4", "name": "Sobha Developers", "subdomain": "sobha", "tier": "Professional", "userQuota": 40, "storageQuota": 40},
-    {"id": "tenant-5", "name": "Godrej Properties", "subdomain": "godrej", "tier": "Basic", "userQuota": 10, "storageQuota": 10}
 ]
 
 # Shared Mock Datasets
@@ -234,9 +238,9 @@ async def seed_all():
                 session.add(User(username="priya", email=f"priya@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role="Sales Executive"))
                 session.add(User(username="amit", email=f"amit@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role="Sales Executive"))
             
-            # Leads
+            # Leads (demo business data - opt in with SEED_DEMO_DATA=1)
             res_lead = await session.execute(select(Lead))
-            if not res_lead.scalars().all():
+            if SEED_DEMO_DATA and not res_lead.scalars().all():
                 for idx, ml in enumerate(MOCK_LEADS):
                     now_date = datetime.now().strftime("%Y-%m-%d")
                     session.add(Lead(
@@ -256,7 +260,7 @@ async def seed_all():
             
             # Customers
             res_cust = await session.execute(select(Customer))
-            if not res_cust.scalars().all():
+            if SEED_DEMO_DATA and not res_cust.scalars().all():
                 for mc in MOCK_CUSTOMERS:
                     now_date = datetime.now().strftime("%Y-%m-%d")
                     session.add(Customer(
@@ -281,7 +285,7 @@ async def seed_all():
 
             # Pipeline (Raw Leads) + workspace pipeline settings
             res_pipe = await session.execute(select(PipelineLead))
-            if not res_pipe.scalars().all():
+            if SEED_DEMO_DATA and not res_pipe.scalars().all():
                 now_stamp = datetime.now().strftime("%Y-%m-%d %H:%M")
                 for idx, mp in enumerate(MOCK_PIPELINE_LEADS):
                     session.add(PipelineLead(
@@ -305,7 +309,7 @@ async def seed_all():
 
             # Bookings
             res_book = await session.execute(select(Booking))
-            if not res_book.scalars().all():
+            if SEED_DEMO_DATA and not res_book.scalars().all():
                 for mb in MOCK_BOOKINGS:
                     session.add(Booking(
                         bookingNo=mb["bookingNo"],

@@ -6,7 +6,7 @@ login hardening, and audit logging.
 import random
 import string
 import pytest
-from tests.helpers import API, DEFAULT_TENANT, ALT_TENANT
+from tests.helpers import API, DEFAULT_TENANT, ALT_TENANT, REMOVED_TENANT
 
 STRONG_PW = "TestPassw0rd!23"
 
@@ -63,13 +63,26 @@ def test_token_carries_tenant_claim(client):
 
 
 def test_identity_resolves_from_token_tenant_not_header(client):
-    """A tenant-1 token must not resolve to the same-named account in tenant-2."""
+    """A tenant-1 token must resolve to its OWN workspace account, not the header's."""
     token = _login(client, DEFAULT_TENANT, "admin", "admin").json()["access_token"]
     resp = client.get(f"{API}/auth/me", headers={
         "Authorization": f"Bearer {token}", "X-Tenant-ID": ALT_TENANT})
     assert resp.status_code == 200
     # Super Admin may cross workspaces, but identity stays the tenant-1 account
     assert resp.json()["email"].endswith("@prestige.com")
+
+
+def test_removed_workspace_is_rejected(client):
+    """
+    A removed/unknown workspace must be refused. Postgres ignores a missing
+    schema in search_path, so without an explicit existence check the request
+    would silently fall through to `public`.
+    """
+    resp = client.post(f"{API}/auth/login",
+                       json={"username": "admin", "password": "admin"},
+                       headers={"X-Tenant-ID": REMOVED_TENANT})
+    assert resp.status_code == 400
+    assert "workspace" in resp.json()["detail"].lower()
 
 
 def test_tenant_admin_cannot_cross_workspace(client, tenant_admin):

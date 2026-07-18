@@ -4,6 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { useTenantStore } from '../store/tenantStore';
 import { useUIStore } from '../store/uiStore';
 import { apiClient } from '../config/api';
+import { WORKSPACES, WORKSPACE_NAMES } from '../config/workspaces';
 
 export const Login = () => {
   const { login } = useAuthStore();
@@ -127,22 +128,13 @@ export const Login = () => {
               value={activeTenantId} 
               onChange={(e) => {
                 const val = e.target.value;
-                const nameMap: Record<string, string> = {
-                  'tenant-1': 'Prestige Group',
-                  'tenant-2': 'DLF Limited',
-                  'tenant-3': 'LODHA Group',
-                  'tenant-4': 'Sobha Developers',
-                  'tenant-5': 'Godrej Properties'
-                };
-                setActiveTenant(val, nameMap[val]);
+                setActiveTenant(val, WORKSPACE_NAMES[val]);
               }}
               style={{ width: '100%', cursor: 'pointer' }}
             >
-              <option value="tenant-1">Prestige Group</option>
-              <option value="tenant-2">DLF Limited</option>
-              <option value="tenant-3">LODHA Group</option>
-              <option value="tenant-4">Sobha Developers</option>
-              <option value="tenant-5">Godrej Properties</option>
+              {WORKSPACES.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
             </select>
           </div>
 

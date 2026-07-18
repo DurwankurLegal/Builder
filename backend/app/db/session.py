@@ -42,12 +42,39 @@ def resolve_schema(tenant_id: str) -> str:
     return safe_schema
 
 
+# Schemas confirmed to exist. Postgres silently ignores a missing schema in
+# `search_path`, which would otherwise let a request for a removed workspace
+# fall through to `public` and read/authenticate against the wrong data.
+_verified_schemas: set[str] = {"public"}
+
+
+async def _schema_exists(session: AsyncSession, schema: str) -> bool:
+    if schema in _verified_schemas:
+        return True
+    result = await session.execute(
+        text("SELECT 1 FROM information_schema.schemata WHERE schema_name = :s"),
+        {"s": schema},
+    )
+    if result.first() is not None:
+        _verified_schemas.add(schema)
+        return True
+    return False
+
+
 async def get_db_session(tenant_id: str = "public") -> AsyncSession:
     """
-    Spawns an async database session mapped explicitly to the active tenant schema search path.
+    Spawns an async database session mapped explicitly to the active tenant
+    schema search path. The schema must actually exist, otherwise the request
+    is rejected rather than silently served from `public`.
     """
     safe_schema = resolve_schema(tenant_id)
     session = async_session_maker()
-    # safe_schema is validated against a strict allowlist regex above
-    await session.execute(text(f"SET search_path TO {safe_schema}, public"))
+    try:
+        if not await _schema_exists(session, safe_schema):
+            raise InvalidTenantError(f"Unknown workspace: {tenant_id!r}")
+        # safe_schema is validated against a strict allowlist regex above
+        await session.execute(text(f"SET search_path TO {safe_schema}, public"))
+    except Exception:
+        await session.close()
+        raise
     return session

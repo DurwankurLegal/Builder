@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
+import { WORKSPACES, WORKSPACE_NAMES } from '../config/workspaces';
 import { useAuthStore } from '../store/authStore';
 import { useTenantStore } from '../store/tenantStore';
 import { useUIStore } from '../store/uiStore';
@@ -74,15 +75,8 @@ export const MainLayout = () => {
 
   const handleTenantChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const val = e.target.value;
-    const nameMap: Record<string, string> = {
-      'tenant-1': 'Prestige Group',
-      'tenant-2': 'DLF Limited',
-      'tenant-3': 'LODHA Group',
-      'tenant-4': 'Sobha Developers',
-      'tenant-5': 'Godrej Properties'
-    };
-    setActiveTenant(val, nameMap[val]);
-    showToast(`Switched workspace context to ${nameMap[val]}!`, 'success');
+    setActiveTenant(val, WORKSPACE_NAMES[val]);
+    showToast(`Switched workspace context to ${WORKSPACE_NAMES[val]}!`, 'success');
     // Reload components context
     navigate(activePath);
   };
@@ -180,11 +174,9 @@ export const MainLayout = () => {
               disabled={userInfo?.role !== 'Super Admin'}
               title={userInfo?.role !== 'Super Admin' ? 'Your account is restricted to this workspace' : undefined}
             >
-              <option value="tenant-1">Prestige Group</option>
-              <option value="tenant-2">DLF Limited</option>
-              <option value="tenant-3">LODHA Group</option>
-              <option value="tenant-4">Sobha Developers</option>
-              <option value="tenant-5">Godrej Properties</option>
+              {WORKSPACES.map(w => (
+                <option key={w.id} value={w.id}>{w.name}</option>
+              ))}
             </select>
           </div>
         </div>

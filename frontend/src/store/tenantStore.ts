@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { resolveWorkspace } from '../config/workspaces';
 
 interface TenantState {
   activeTenantId: string;
@@ -11,9 +12,11 @@ interface TenantState {
 }
 
 export const useTenantStore = create<TenantState>((set) => {
-  // Read initial cached styles or fallback defaults
-  const savedTenantId = localStorage.getItem('crm-active-tenant-id') || 'tenant-1';
-  const savedTenantName = localStorage.getItem('crm-active-tenant-name') || 'Prestige Group';
+  // Read initial cached styles or fallback defaults. A workspace cached from a
+  // tenant that has since been removed falls back to the default.
+  const workspace = resolveWorkspace(localStorage.getItem('crm-active-tenant-id'));
+  const savedTenantId = workspace.id;
+  const savedTenantName = workspace.name;
   const savedStyle = localStorage.getItem('crm-style') || 'indigo';
   const savedTheme = localStorage.getItem('crm-theme') || 'light';
 
