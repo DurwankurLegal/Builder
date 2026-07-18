@@ -20,3 +20,6 @@ venv/
 # Editor
 .vscode/
 .idea/
+
+# Production secrets - never commit
+deploy/.env
