@@ -198,8 +198,8 @@ def test_csv_import_validation_and_dupes(client, admin_headers):
     rows = [
         ["name", "phone", "email", "source", "project", "budget"],
         ["Import One", phone_ok, rand_email(), "Bulk Import", "Sunrise Heights", "₹80 L"],
-        ["Al", rand_phone(), rand_email(), "Bulk Import", "Sunrise Heights", ""],       # short name
-        ["No Phone", "", rand_email(), "Bulk Import", "Sunrise Heights", ""],           # missing phone
+        ["Al", rand_phone(), rand_email(), "Bulk Import", "Sunrise Heights", ""],       # short name OK now
+        ["No Phone", "", rand_email(), "Bulk Import", "Sunrise Heights", ""],           # missing mobile -> error
         ["Dup Row", phone_ok, rand_email(), "Bulk Import", "Sunrise Heights", ""],      # dup within batch
     ]
     buf = io.StringIO()
@@ -208,10 +208,32 @@ def test_csv_import_validation_and_dupes(client, admin_headers):
     resp = client.post(f"{API}/pipeline/import", files=files, headers=admin_headers)
     assert resp.status_code == 200
     body = resp.json()
-    assert body["imported"] == 1
-    assert body["errors"] == 2
+    # Import One + short-name "Al" both import; missing-mobile errors; dup blocked
+    assert body["imported"] == 2
+    assert body["errors"] == 1
     assert body["duplicates"] == 1
-    assert len(body["error_details"]) >= 2
+    assert "mobile number" in body["error_details"][0]
+
+
+def test_csv_import_mobile_only(client, admin_headers):
+    """A row with ONLY a mobile number imports successfully; blanks get defaults."""
+    phone = rand_phone()
+    rows = [
+        ["name", "phone", "email", "source", "project", "budget"],
+        ["", phone, "", "", "", ""],
+    ]
+    buf = io.StringIO()
+    csv.writer(buf).writerows(rows)
+    files = {"file": ("mobile_only.csv", buf.getvalue(), "text/csv")}
+    resp = client.post(f"{API}/pipeline/import", files=files, headers=admin_headers)
+    assert resp.status_code == 200
+    assert resp.json()["imported"] == 1
+    # the imported lead is findable by its mobile number and has placeholder defaults
+    found = client.get(f"{API}/pipeline/leads?stage=raw&search={phone}", headers=admin_headers).json()
+    assert found["total"] == 1
+    lead = found["items"][0]
+    assert lead["phone"] == phone
+    assert lead["name"]  # non-empty placeholder (NOT NULL column)
 
 
 def test_import_history_records_batch(client, admin_headers):

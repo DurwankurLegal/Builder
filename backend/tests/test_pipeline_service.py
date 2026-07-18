@@ -52,36 +52,51 @@ def test_validate_row_ok():
     assert fields["name"] == "Asha Verma"
 
 
-def test_validate_row_missing_name():
-    _, err = _validate_import_row({"name": "", "phone": "9876543210"})
-    assert "missing name" in err
-
-
-def test_validate_row_short_name():
-    _, err = _validate_import_row({"name": "Al", "phone": "9876543210"})
-    assert "too short" in err
-
-
-def test_validate_row_missing_phone():
-    _, err = _validate_import_row({"name": "Valid Name", "phone": ""})
-    assert "missing phone" in err
-
-
-def test_validate_row_invalid_phone():
-    _, err = _validate_import_row({"name": "Valid Name", "phone": "12345"})
-    assert "invalid phone" in err
-
-
-def test_validate_row_invalid_email():
-    _, err = _validate_import_row(
-        {"name": "Valid Name", "phone": "9876543210", "email": "not-an-email"})
-    assert "invalid email" in err
-
-
-def test_validate_row_email_optional():
-    fields, err = _validate_import_row({"name": "Valid Name", "phone": "9876543210"})
+def test_validate_row_mobile_only_is_enough():
+    # Mobile Number is the ONLY mandatory field — everything else may be blank.
+    fields, err = _validate_import_row({"phone": "9876543210"})
     assert err is None
+    assert fields["phone"] == "9876543210"
+    assert fields["name"] == ""
     assert fields["email"] == ""
+
+
+def test_validate_row_blank_name_allowed():
+    _, err = _validate_import_row({"name": "", "phone": "9876543210"})
+    assert err is None
+
+
+def test_validate_row_short_name_allowed():
+    # Name is optional now, so a short name no longer blocks import.
+    _, err = _validate_import_row({"name": "Al", "phone": "9876543210"})
+    assert err is None
+
+
+def test_validate_row_blank_email_allowed():
+    _, err = _validate_import_row({"phone": "9876543210", "email": ""})
+    assert err is None
+
+
+def test_validate_row_any_email_accepted():
+    # Email is not validated during bulk import; users fix it later in the CRM.
+    _, err = _validate_import_row({"phone": "9876543210", "email": "not-an-email"})
+    assert err is None
+
+
+def test_validate_row_missing_mobile():
+    _, err = _validate_import_row({"name": "Valid Name", "phone": ""})
+    assert "missing mobile number" in err
+
+
+def test_validate_row_invalid_mobile():
+    _, err = _validate_import_row({"name": "Valid Name", "phone": "12345"})
+    assert "invalid mobile number" in err
+
+
+def test_validate_row_accepts_mobile_column_alias():
+    fields, err = _validate_import_row({"mobile": "9876543210"})
+    assert err is None
+    assert fields["phone"] == "9876543210"
 
 
 # ---------- Excel cell coercion (leading zeros / no sci-notation) ----------

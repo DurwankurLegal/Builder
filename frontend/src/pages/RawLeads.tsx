@@ -309,6 +309,8 @@ export const RawLeads = () => {
           <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
             <p style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-muted)' }}>
               Upload a .csv or .xlsx file with columns: <b>name, phone, email, source, project, budget</b>.
+              Only <b>Mobile Number (phone)</b> is required — every other field is optional and can be
+              filled in later. Rows without a valid mobile number are rejected and listed below.
               Duplicates are blocked automatically per the workspace duplicate policy.
             </p>
             <input

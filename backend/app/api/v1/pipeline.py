@@ -311,23 +311,21 @@ EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 def _validate_import_row(row: dict) -> tuple[dict | None, str | None]:
     """
-    Common validation applied to every imported row regardless of file format.
+    Bulk-import validation. The Mobile Number is the ONLY mandatory field:
+    a row imports as long as it carries a valid mobile number, even if every
+    other field is blank. All other fields (name, email, source, project,
+    budget) are optional and can be filled in later through the CRM.
     Returns (normalized_fields, None) on success or (None, reason) on failure.
     """
     name = (row.get("name") or "").strip()
     phone = str(row.get("phone") or row.get("phone_number") or row.get("mobile") or "").strip()
     email = (row.get("email") or row.get("email_id") or "").strip()
 
-    if not name:
-        return None, "missing name"
-    if len(name) < 3:
-        return None, f"name '{name}' is too short (min 3 characters)"
+    # Mobile Number — the single required, validated field
     if not phone:
-        return None, "missing phone number"
+        return None, "missing mobile number"
     if len(pipeline_service.normalize_phone(phone)) < 10:
-        return None, f"invalid phone number '{phone}' (needs at least 10 digits)"
-    if email and not EMAIL_RE.match(email):
-        return None, f"invalid email address '{email}'"
+        return None, f"invalid mobile number '{phone}' (needs at least 10 digits)"
 
     return {"name": name, "phone": phone, "email": email}, None
 
@@ -369,14 +367,16 @@ async def bulk_import_leads(
         clash = await pipeline_service.find_duplicate(db, fields["phone"], fields["email"], settings_row)
         if clash:
             duplicates += 1
-            duplicate_details.append(f"Row {idx} ({fields['name']}): {clash}")
+            duplicate_details.append(f"Row {idx} ({fields['name'] or fields['phone']}): {clash}")
             continue
 
         new_id = await pipeline_service.next_pipeline_id(db)
+        # Optional fields fall back to safe placeholders so a mobile-only row
+        # still satisfies the NOT NULL columns; users refine these later.
         lead = PipelineLead(
             id=new_id,
             date=row.get("date") or datetime.now().strftime("%Y-%m-%d"),
-            name=fields["name"],
+            name=fields["name"] or "Unnamed Lead",
             phone=fields["phone"],
             email=fields["email"] or f"unknown+{new_id.lower()}@leads.import",
             source=row.get("source") or "Bulk Import",
