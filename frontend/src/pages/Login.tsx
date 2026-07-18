@@ -14,8 +14,36 @@ export const Login = () => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+
   const navigate = useNavigate();
+
+  const handleForcedPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const newPassword = (form.elements.namedItem('newPassword') as HTMLInputElement).value;
+    const confirmPassword = (form.elements.namedItem('confirmPassword') as HTMLInputElement).value;
+
+    if (newPassword !== confirmPassword) {
+      setError('New passwords do not match.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.post('/auth/change-password', {
+        current_password: password,
+        new_password: newPassword,
+      });
+      showToast('Password updated. Welcome aboard!', 'success');
+      navigate('/dashboard');
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Password change failed.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -33,8 +61,16 @@ export const Login = () => {
         }
       });
       
-      const { access_token, user } = response.data;
+      const { access_token, user, force_password_change } = response.data;
       login(access_token, user);
+
+      if (force_password_change) {
+        // Administrator required a password change before the account is usable
+        setMustChangePassword(true);
+        setLoading(false);
+        return;
+      }
+
       showToast(`Welcome back, ${user.username}!`, 'success');
       navigate('/dashboard');
     } catch (err: any) {
@@ -62,6 +98,27 @@ export const Login = () => {
           </div>
         )}
 
+        {mustChangePassword ? (
+          <form onSubmit={handleForcedPasswordChange}>
+            <div style={{ backgroundColor: 'var(--color-warning-bg, var(--bg-muted))', borderRadius: 'var(--radius-md)', padding: 'var(--spacing-3)', fontSize: 'var(--font-size-sm)', marginBottom: 'var(--spacing-4)' }}>
+              Your administrator requires you to set a new password before continuing.
+            </div>
+            <div className="form-group" style={{ marginBottom: 'var(--spacing-4)' }}>
+              <label className="form-label">New Password</label>
+              <input type="password" name="newPassword" className="form-control" required minLength={8}
+                placeholder="At least 8 characters" style={{ width: '100%' }} />
+            </div>
+            <div className="form-group" style={{ marginBottom: 'var(--spacing-6)' }}>
+              <label className="form-label">Confirm New Password</label>
+              <input type="password" name="confirmPassword" className="form-control" required minLength={8}
+                placeholder="Re-enter new password" style={{ width: '100%' }} />
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={loading}
+              style={{ width: '100%', padding: 'var(--spacing-3)', fontWeight: 'var(--font-weight-semibold)' }}>
+              {loading ? 'Updating...' : 'Set New Password'}
+            </button>
+          </form>
+        ) : (
         <form onSubmit={handleLoginSubmit}>
           <div className="form-group" style={{ marginBottom: 'var(--spacing-4)' }}>
             <label className="form-label">Active Workspace</label>
@@ -124,10 +181,13 @@ export const Login = () => {
             {loading ? 'Authenticating...' : 'Secure Log In'}
           </button>
         </form>
+        )}
 
-        <div style={{ textAlign: 'center', marginTop: 'var(--spacing-6)', fontSize: '11px', color: 'var(--text-muted)' }}>
-          Tip: Seeding creates admin account: <b>admin</b> / <b>admin</b>
-        </div>
+        {!mustChangePassword && (
+          <div style={{ textAlign: 'center', marginTop: 'var(--spacing-6)', fontSize: '11px', color: 'var(--text-muted)' }}>
+            Tip: Seeding creates admin account: <b>admin</b> / <b>admin</b>
+          </div>
+        )}
       </div>
     </div>
   );

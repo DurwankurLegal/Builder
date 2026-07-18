@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -10,6 +10,7 @@ class Token(BaseModel):
     access_token: str
     token_type: str
     user: Any
+    force_password_change: bool = False
 
 class TokenPayload(BaseModel):
     sub: Optional[str] = None
@@ -34,6 +35,55 @@ class UserResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+# ========================================================
+# USER ACCOUNT MANAGEMENT SCHEMAS
+# ========================================================
+
+class AdminUserCreate(BaseModel):
+    username: str = Field(min_length=3, max_length=100)
+    email: EmailStr
+    password: str = Field(min_length=8)
+    role: str = "Sales Executive"
+    is_active: bool = True
+    force_password_change: bool = True
+
+class AdminUserUpdate(BaseModel):
+    email: Optional[EmailStr] = None
+    role: Optional[str] = None
+    is_active: Optional[bool] = None
+
+class PasswordResetRequest(BaseModel):
+    new_password: str = Field(min_length=8)
+    force_password_change: bool = True
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
+
+class ForcePasswordChangeRequest(BaseModel):
+    force_password_change: bool = True
+
+class AdminUserResponse(BaseModel):
+    id: int
+    username: str
+    email: EmailStr
+    role: str
+    is_active: bool
+    is_locked: bool = False
+    force_password_change: bool = False
+    failed_login_attempts: int = 0
+    created_at: Optional[datetime] = None
+    last_login: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True
+
+class TenantUserGroup(BaseModel):
+    tenant_id: str
+    tenant_name: str
+    users: List[AdminUserResponse]
 
 
 # ========================================================

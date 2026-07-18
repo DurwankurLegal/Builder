@@ -18,6 +18,7 @@ const Followups = React.lazy(() => import('./pages/Followups').then(m => ({ defa
 const Reports = React.lazy(() => import('./pages/Reports').then(m => ({ default: m.Reports })));
 const Settings = React.lazy(() => import('./pages/Settings').then(m => ({ default: m.Settings })));
 const AdminConsole = React.lazy(() => import('./pages/AdminConsole').then(m => ({ default: m.AdminConsole })));
+const UserManagement = React.lazy(() => import('./pages/UserManagement').then(m => ({ default: m.UserManagement })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -66,6 +67,16 @@ export const App = () => {
               <Route path="reports" element={<Reports />} />
               <Route path="settings" element={<Settings />} />
               
+              {/* User account management - Super Admin & Tenant Admin only */}
+              <Route
+                path="users"
+                element={
+                  <RequireAuth allowedRoles={['Super Admin', 'Tenant Admin']}>
+                    <UserManagement />
+                  </RequireAuth>
+                }
+              />
+
               {/* RBAC protected admin panel */}
               <Route 
                 path="admin" 

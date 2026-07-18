@@ -28,7 +28,7 @@ class Tenant(Base):
 
 class User(Base):
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     username = Column(String(100), unique=True, nullable=False)
     email = Column(String(255), unique=True, nullable=False)
@@ -36,6 +36,12 @@ class User(Base):
     role = Column(String(50), default="Sales Executive") # Super Admin, Tenant Admin, Sales Executive
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    # Account security / lifecycle state
+    is_locked = Column(Boolean, default=False)
+    failed_login_attempts = Column(Integer, default=0)
+    force_password_change = Column(Boolean, default=False)
+    last_login = Column(DateTime, nullable=True)
 
 
 class Lead(Base):

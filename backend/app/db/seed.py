@@ -14,7 +14,11 @@ SCHEMA_TABLES_DDL = [
         hashed_password VARCHAR(255) NOT NULL,
         role VARCHAR(50) DEFAULT 'Sales Executive',
         is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_locked BOOLEAN DEFAULT FALSE,
+        failed_login_attempts INTEGER DEFAULT 0,
+        force_password_change BOOLEAN DEFAULT FALSE,
+        last_login TIMESTAMP NULL
     )""",
     """CREATE TABLE IF NOT EXISTS {schema}.leads (
         id VARCHAR(50) PRIMARY KEY,
@@ -113,6 +117,15 @@ SCHEMA_TABLES_DDL = [
     )"""
 ]
 
+# Additive migrations applied to every tenant schema on each seed run so
+# workspaces provisioned before these account-security columns existed get them.
+USER_COLUMN_MIGRATIONS = [
+    "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS is_locked BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0",
+    "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT FALSE",
+    "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP NULL",
+]
+
 TENANTS_SEED = [
     {"id": "tenant-1", "name": "Prestige Group", "subdomain": "prestige", "tier": "Enterprise", "userQuota": 150, "storageQuota": 100},
     {"id": "tenant-2", "name": "DLF Limited", "subdomain": "dlf", "tier": "Enterprise", "userQuota": 200, "storageQuota": 150},
@@ -160,6 +173,10 @@ async def seed_all():
         await conn.execute(text("CREATE SCHEMA IF NOT EXISTS public"))
         await conn.execute(text("SET search_path TO public"))
         await conn.run_sync(Base.metadata.create_all)
+        # public.users predates the account-security columns when the table
+        # already existed (create_all never alters an existing table).
+        for alter in USER_COLUMN_MIGRATIONS:
+            await conn.execute(text(alter.format(schema="public")))
         print("Spawned public schema tables.")
 
     async_session = async_session_maker()
@@ -200,6 +217,9 @@ async def seed_all():
             await conn.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
             for ddl in SCHEMA_TABLES_DDL:
                 await conn.execute(text(ddl.format(schema=schema)))
+            # Idempotent migrations for schemas created before these columns existed
+            for alter in USER_COLUMN_MIGRATIONS:
+                await conn.execute(text(alter.format(schema=schema)))
             print(f"Spawned workspace tables for schema: {schema}")
             
         # Seed records

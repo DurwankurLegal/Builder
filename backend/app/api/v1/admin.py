@@ -19,7 +19,11 @@ SCHEMA_DDL_TEMPLATES = [
         hashed_password VARCHAR(255) NOT NULL,
         role VARCHAR(50) DEFAULT 'Sales Executive',
         is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        is_locked BOOLEAN DEFAULT FALSE,
+        failed_login_attempts INTEGER DEFAULT 0,
+        force_password_change BOOLEAN DEFAULT FALSE,
+        last_login TIMESTAMP NULL
     )""",
     """CREATE TABLE IF NOT EXISTS {schema}.leads (
         id VARCHAR(50) PRIMARY KEY,

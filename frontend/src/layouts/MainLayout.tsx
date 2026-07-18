@@ -10,7 +10,7 @@ import { SearchModal } from '../components/SearchModal';
 import {
   LayoutDashboard, Users, ShieldAlert, CheckCircle2, XCircle,
   Calendar, BarChart4, Settings, ShieldCheck, Search, Moon, Sun,
-  Palette, Bell, LogOut, Menu, User, Inbox, PhoneCall, BadgeCheck
+  Palette, Bell, LogOut, Menu, User, Inbox, PhoneCall, BadgeCheck, UsersRound
 } from 'lucide-react';
 
 export const MainLayout = () => {
@@ -54,6 +54,11 @@ export const MainLayout = () => {
     { label: 'Analytical Reports', path: '/reports', icon: BarChart4 },
     { label: 'System Settings', path: '/settings', icon: Settings },
   ];
+
+  // User account management is available to both administrator roles
+  if (userInfo?.role === 'Super Admin' || userInfo?.role === 'Tenant Admin') {
+    sidebarLinks.push({ label: 'User Management', path: '/users', icon: UsersRound });
+  }
 
   // Append Admin Console option for Super Admin
   if (userInfo?.role === 'Super Admin') {
@@ -163,13 +168,17 @@ export const MainLayout = () => {
             {getBreadcrumbs()}
           </nav>
 
-          {/* Multi-Tenant Selector dropdown */}
+          {/* Multi-Tenant Selector dropdown. Only a Super Admin may operate
+              across workspaces; everyone else is pinned to their own (the
+              backend rejects a mismatched workspace regardless). */}
           <div style={{ marginLeft: 'var(--spacing-4)', borderLeft: '1px solid var(--border-color)', paddingLeft: 'var(--spacing-4)', display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)' }}>
             <span style={{ fontSize: 'var(--font-size-xs)', fontWeight: 'var(--font-weight-medium)', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Workspace:</span>
-            <select 
-              id="topbar-tenant-select" 
-              value={activeTenantId} 
+            <select
+              id="topbar-tenant-select"
+              value={activeTenantId}
               onChange={handleTenantChange}
+              disabled={userInfo?.role !== 'Super Admin'}
+              title={userInfo?.role !== 'Super Admin' ? 'Your account is restricted to this workspace' : undefined}
             >
               <option value="tenant-1">Prestige Group</option>
               <option value="tenant-2">DLF Limited</option>

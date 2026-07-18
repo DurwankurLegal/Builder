@@ -110,6 +110,59 @@ All bugs below were identified during the QA cycle, fixed, and re-verified.
   logging.
 - **Verified:** Edit modal opens, saves, and records the change.
 
+### BUG-007 — Cross-tenant privilege escalation via `X-Tenant-ID` header
+- **Module:** Authentication / multi-tenancy
+- **Severity:** **Critical (Security)**
+- **Steps to reproduce:** Log in to `tenant-1` as `admin`, then reuse that token
+  with header `X-Tenant-ID: tenant-2`.
+- **Expected:** Rejected — a session belongs to the workspace it authenticated against.
+- **Actual:** HTTP 200. `/auth/me` returned the **tenant-2** account
+  (`admin@dlf.com`) and tenant-2 business data was readable. Because the JWT
+  carried only `{"sub": "admin"}` with no tenant claim, and the seed creates an
+  `admin` in every schema, any user could pivot into any workspace where their
+  username existed.
+- **Root cause:** Identity was resolved in the schema named by the caller-supplied
+  header rather than the workspace the token was issued for.
+- **Resolution:** Access tokens now carry a `tenant` claim. `get_current_user`
+  resolves identity in the **token's** workspace and rejects a header/token
+  mismatch with 403 unless the account is a Super Admin (who is explicitly
+  permitted to operate cross-workspace). Tokens without a tenant claim are
+  rejected so pre-fix sessions must re-authenticate. The workspace switcher is
+  also disabled in the UI for non-Super-Admins.
+- **Verified:** Tenant Admin cross-workspace request → **403**; Super Admin
+  cross-workspace → 200 with identity still resolved as `admin@prestige.com`.
+  Covered by `test_tenant_admin_cannot_cross_workspace`,
+  `test_identity_resolves_from_token_tenant_not_header`.
+
+### BUG-008 — `db.refresh()` after `commit()` intermittently 500s
+- **Module:** Backend / user management router
+- **Severity:** Medium (Correctness, intermittent)
+- **Steps to reproduce:** Create a user via `POST /users` repeatedly; some calls
+  return 500 `Could not refresh instance '<User>'`.
+- **Expected:** 201 every time.
+- **Actual:** Intermittent 500s.
+- **Root cause:** `commit()` releases the session's connection back to the pool;
+  the subsequent `refresh()` may check out a **different** connection that never
+  had `SET search_path` applied, so the row is invisible in the tenant schema.
+- **Resolution:** Removed all `refresh()`-after-`commit()` calls. The session
+  uses `expire_on_commit=False`, so instances retain their loaded values (and
+  `id`/`created_at` are already populated at flush time).
+- **Verified:** Full suite green on three consecutive runs.
+
+### BUG-009 — `public.users` missing new account-security columns
+- **Module:** Database migration
+- **Severity:** Medium
+- **Steps to reproduce:** Call `/auth/login` with no `X-Tenant-ID` header (defaults
+  to the `public` schema).
+- **Expected:** 401 for bad credentials.
+- **Actual:** 500 — `SELECT` referenced `is_locked`, `failed_login_attempts`,
+  `force_password_change`, `last_login`, which existed only in tenant schemas.
+- **Root cause:** `Base.metadata.create_all` never alters an existing table, and
+  the additive migration ran only over tenant schemas.
+- **Resolution:** The `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` migration now
+  also runs against `public`.
+- **Verified:** `test_invalid_login` passes; columns present in `public.users`.
+
 **Non-blocking observations (not defects):** framework deprecation warnings
 (Pydantic class-based `Config`, FastAPI `on_event`) surface in logs; they do not
 affect behavior and are safe to modernize later.
@@ -126,9 +179,10 @@ async DB, tenant schema routing, and AI worker exercise real code paths.
 | `test_pipeline_service.py` | 24 | Unit: phone normalization, tenant-schema sanitization (injection), import-row validation, Excel cell coercion, stage-transition matrix, AI-call application |
 | `test_pipeline_api.py` | 35 | Integration: auth, RBAC (403/401), CRUD, duplicate detection, validation, manual stage entry, bulk move, import/export, templates, recordings, pagination/search, AI endpoints, stats, audit, tenant isolation |
 | `test_e2e_workflow.py` | 4 | Full lifecycle raw→called→qualified→customer, reject path, qualified→Leads DB handoff, bulk operations |
+| `test_user_management.py` | 28 | Token tenant-binding, cross-workspace isolation, RBAC (Super Admin / Tenant Admin / Sales Executive), user CRUD, privilege-escalation guards, lockout & unlock, activate/deactivate, password reset, forced password change, audit logging |
 | `test_auth.py` | 3 | Health, metrics, invalid login |
 | `test_tenant_routing.py` | 2 | Tenant header propagation, default schema |
-| **Total** | **68** | **All passing (2 consecutive runs)** |
+| **Total** | **96** | **All passing (3 consecutive runs)** |
 
 Test scenarios include **positive, negative, boundary (out-of-range pagination),
 validation, and permission-based** cases. Determinism is ensured by a session

@@ -12,6 +12,12 @@ oauth2_scheme = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/auth/login"
 )
 
+# Roles permitted to administer user accounts
+SUPER_ADMIN = "Super Admin"
+TENANT_ADMIN = "Tenant Admin"
+USER_ADMIN_ROLES = [SUPER_ADMIN, TENANT_ADMIN]
+
+
 async def get_db(request: Request):
     """
     Dependency resolver that provisions active database sessions scoped to the client tenant's schema search path.
@@ -29,35 +35,77 @@ async def get_db(request: Request):
     finally:
         await session.close()
 
+
 async def get_current_user(
     request: Request,
     db: AsyncSession = Depends(get_db),
     token: str = Depends(oauth2_scheme)
 ) -> User:
     """
-    Decrypts client JWT tokens and resolves the logged-in user profile inside the tenant context.
+    Resolves the logged-in user and enforces multi-tenant isolation.
+
+    The token is bound to the workspace it was issued for. Identity is always
+    resolved in the TOKEN's workspace, never the caller-supplied header, so a
+    token minted in one tenant cannot impersonate a same-named account in
+    another. Only a Super Admin may operate across workspaces.
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate user session or credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    
+
     payload = decode_token(token)
     if payload is None:
         raise credentials_exception
-        
+
     username: str = payload.get("sub")
-    if username is None:
+    token_tenant: str = payload.get("tenant")
+    # Tokens without a tenant binding predate isolation enforcement - reject
+    # them so the client re-authenticates and gets a bound token.
+    if username is None or token_tenant is None:
         raise credentials_exception
-        
-    # Execute query under active tenant schema path
-    result = await db.execute(select(User).where(User.username == username))
-    user = result.scalars().first()
+
+    request_tenant = getattr(request.state, "tenant_id", "public")
+
+    if token_tenant == request_tenant:
+        result = await db.execute(select(User).where(User.username == username))
+        user = result.scalars().first()
+    else:
+        # Cross-workspace request: resolve identity in the token's own workspace.
+        try:
+            identity_session = await get_db_session(token_tenant)
+        except InvalidTenantError:
+            raise credentials_exception
+        try:
+            result = await identity_session.execute(select(User).where(User.username == username))
+            user = result.scalars().first()
+        finally:
+            await identity_session.close()
+
+        if user is None:
+            raise credentials_exception
+        if user.role != SUPER_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cross-workspace access denied: your session is bound to another workspace"
+            )
+
     if user is None:
         raise credentials_exception
-        
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account has been deactivated. Contact your administrator."
+        )
+    if user.is_locked:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This account is locked. Contact your administrator."
+        )
+
     return user
+
 
 def check_roles(allowed_roles: list[str]):
     """
@@ -71,3 +119,30 @@ def check_roles(allowed_roles: list[str]):
             )
         return user
     return dependency
+
+
+def require_user_admin(user: User = Depends(get_current_user)) -> User:
+    """Super Admin or Tenant Admin - the roles allowed to manage user accounts."""
+    if user.role not in USER_ADMIN_ROLES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User account management requires an administrator role"
+        )
+    return user
+
+
+def require_super_admin(user: User = Depends(get_current_user)) -> User:
+    if user.role != SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This operation is restricted to the Super Admin"
+        )
+    return user
+
+
+def client_ip(request: Request) -> str:
+    """Best-effort client IP for audit records (honours a proxy header if present)."""
+    forwarded = request.headers.get("X-Forwarded-For")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
