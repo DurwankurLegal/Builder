@@ -171,6 +171,31 @@ def test_get_missing_user_404(client, admin_headers):
     assert client.get(f"{API}/users/99999", headers=admin_headers).status_code == 404
 
 
+def test_delete_user(client, admin_headers, make_user):
+    user = make_user()
+    resp = client.delete(f"{API}/users/{user['id']}", headers=admin_headers)
+    assert resp.status_code == 200
+    assert client.get(f"{API}/users/{user['id']}", headers=admin_headers).status_code == 404
+
+
+def test_cannot_delete_self(client, admin_headers):
+    users = client.get(f"{API}/users", headers=admin_headers).json()
+    me = next(u for u in users if u["username"] == "admin")
+    assert client.delete(f"{API}/users/{me['id']}", headers=admin_headers).status_code == 400
+
+
+def test_tenant_admin_cannot_delete_super_admin(client, tenant_admin, admin_headers):
+    users = client.get(f"{API}/users", headers=admin_headers).json()
+    super_admin = next(u for u in users if u["role"] == "Super Admin")
+    resp = client.delete(f"{API}/users/{super_admin['id']}", headers=tenant_admin["headers"])
+    assert resp.status_code == 403
+
+
+def test_delete_requires_admin_role(client, sales_headers, make_user):
+    user = make_user()
+    assert client.delete(f"{API}/users/{user['id']}", headers=sales_headers).status_code == 403
+
+
 # ---------- account lifecycle ----------
 
 def test_deactivate_blocks_login_and_activate_restores(client, admin_headers, make_user):

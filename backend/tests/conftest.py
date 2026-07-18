@@ -64,6 +64,32 @@ def pause_ai_agent():
                   json={"ai_calling_enabled": was_enabled}, headers=h)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def cleanup_test_users():
+    """
+    Removes user accounts created during the run. Without this, every suite
+    execution leaves behind dozens of throwaway accounts that clutter the real
+    workspace's User Management screen.
+    """
+    def _snapshot():
+        with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+            token = _login(c, DEFAULT_TENANT)
+            headers = {"Authorization": f"Bearer {token}", "X-Tenant-ID": DEFAULT_TENANT}
+            resp = c.get(f"{API}/users", headers=headers)
+            resp.raise_for_status()
+            return {u["id"] for u in resp.json()}
+
+    before = _snapshot()
+    yield
+
+    with httpx.Client(base_url=BASE_URL, timeout=30) as c:
+        token = _login(c, DEFAULT_TENANT)
+        headers = {"Authorization": f"Bearer {token}", "X-Tenant-ID": DEFAULT_TENANT}
+        for user in c.get(f"{API}/users", headers=headers).json():
+            if user["id"] not in before:
+                c.delete(f"{API}/users/{user['id']}", headers=headers)
+
+
 @pytest.fixture()
 def make_raw_lead(client, admin_headers):
     """Factory that creates a fresh raw lead and returns its JSON."""

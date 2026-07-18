@@ -132,6 +132,10 @@ USER_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP NULL",
 ]
 
+# The single workspace whose admin is the system-wide Super Admin. Admins of
+# every other workspace are Tenant Admins, confined to their own workspace.
+SUPER_ADMIN_TENANT = "tenant-1"
+
 # Workspaces provisioned by the seed. Must stay in step with the frontend
 # workspace list (frontend/src/config/workspaces.ts).
 TENANTS_SEED = [
@@ -243,11 +247,14 @@ async def seed_all():
         async with async_session_maker() as session:
             await session.execute(text(f"SET search_path TO {schema}"))
             
-            # Users
+            # Users. Only the primary workspace gets a Super Admin (the system
+            # administrator who may operate across workspaces); every other
+            # workspace's admin is a Tenant Admin scoped to that workspace.
             res_user = await session.execute(select(User))
             if not res_user.scalars().all():
                 hashed_pwd = get_password_hash("admin")
-                session.add(User(username="admin", email=f"admin@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role="Super Admin"))
+                admin_role = "Super Admin" if tenant_seed["id"] == SUPER_ADMIN_TENANT else "Tenant Admin"
+                session.add(User(username="admin", email=f"admin@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role=admin_role))
                 session.add(User(username="priya", email=f"priya@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role="Sales Executive"))
                 session.add(User(username="amit", email=f"amit@{tenant_seed['subdomain']}.com", hashed_password=hashed_pwd, role="Sales Executive"))
             

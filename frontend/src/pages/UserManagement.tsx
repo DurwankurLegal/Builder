@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
 import { useTenantStore } from '../store/tenantStore';
 import {
   Plus, XCircle, KeyRound, Lock, Unlock, UserCheck, UserX,
-  Edit, ShieldAlert, RefreshCw, Search
+  Edit, ShieldAlert, RefreshCw, Search, Trash2
 } from 'lucide-react';
 
 interface ManagedUser {
@@ -87,6 +87,12 @@ export const UserManagement = () => {
     onError: (err: any) => showToast(err?.response?.data?.detail || 'User creation failed.', 'danger'),
   });
 
+  const deleteM = useMutation({
+    mutationFn: async (id: number) => (await apiClient.delete(`/users/${id}`)).data,
+    onSuccess: () => { invalidate(); showToast('User account deleted.', 'success'); },
+    onError: (err: any) => showToast(err?.response?.data?.detail || 'Delete failed.', 'danger'),
+  });
+
   const updateM = useMutation({
     mutationFn: async ({ id, body }: { id: number; body: any }) =>
       (await apiClient.put(`/users/${id}`, body)).data,
@@ -147,6 +153,15 @@ export const UserManagement = () => {
                 style={{ padding: '4px' }}
                 onClick={() => forceM.mutate({ id: u.id, path: 'force-password-change', body: { force_password_change: !u.force_password_change } })}>
                 <Lock size={14} />
+              </button>
+              <button className="btn btn-ghost" title="Delete account permanently"
+                style={{ padding: '4px', color: 'var(--color-danger)' }}
+                onClick={() => {
+                  if (window.confirm(`Permanently delete the account "${u.username}"? Deactivating instead preserves history.`)) {
+                    deleteM.mutate(u.id);
+                  }
+                }}>
+                <Trash2 size={14} />
               </button>
             </div>
           </td>

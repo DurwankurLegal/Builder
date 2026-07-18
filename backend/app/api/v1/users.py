@@ -215,6 +215,32 @@ async def update_user(
     return user
 
 
+@router.delete("/{user_id}")
+async def delete_user(
+    user_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(require_user_admin)
+):
+    """
+    Permanently removes a user account from the active workspace. Deactivation
+    is usually preferable (it preserves the audit history against a real
+    account), so this is guarded: no self-deletion, and a Tenant Admin may not
+    delete a Super Admin.
+    """
+    user = await _get_user_or_404(db, user_id)
+    if user.id == actor.id:
+        raise HTTPException(status_code=400, detail="You cannot delete your own account")
+    if user.role == SUPER_ADMIN and actor.role != SUPER_ADMIN:
+        raise HTTPException(status_code=403, detail="Only a Super Admin may delete a Super Admin account")
+
+    username = user.username
+    await db.delete(user)
+    await _audit(db, request, actor.username, f"Deleted user account '{username}'.")
+    await db.commit()
+    return {"detail": f"User account '{username}' deleted", "id": user_id}
+
+
 # ========================================================
 # ACCOUNT ACTIONS
 # ========================================================
