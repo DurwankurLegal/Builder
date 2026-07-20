@@ -1,12 +1,19 @@
 """
-AI Calling Agent simulation.
+AI Calling Agent worker.
 
 A background worker periodically sweeps every tenant workspace for pending
-Raw Leads, simulates outbound qualification calls, and applies the outcome
-through the same pipeline_service pathway used by the REST API — so leads
-automatically advance Raw -> Called with full history, audit trail, and
-retry accounting. An external dialer platform can replace this worker by
-driving the /pipeline/ai REST endpoints instead.
+Raw Leads and drives outbound qualification calls through the workspace's
+configured voice provider:
+
+  * 'simulation'  — the built-in demo dialer that fabricates plausible call
+                    outcomes locally (no external traffic).
+  * 'hirebuddha'  — dispatches each lead to the HireBuddha AI voice platform
+                    (agent "Priya"); the real call result arrives later via
+                    the CRM Update API callback (/integrations/hirebuddha).
+
+Both providers flow through the same pipeline_service pathway used by the
+REST API, so leads advance Raw -> Called with identical history, audit
+trail, and retry accounting.
 """
 import asyncio
 import random
@@ -15,12 +22,13 @@ from sqlalchemy import select, text
 from loguru import logger
 from app.db.session import async_session_maker
 from app.models.models import Tenant, PipelineLead
-from app.services import pipeline_service
+from app.services import pipeline_service, hirebuddha
 
 AGENT_NAME = "AI Calling Agent"
 GLOBAL_TICK_SECONDS = 15  # worker heartbeat; per-tenant cadence comes from lead_settings
 
-PENDING_STATUSES = ("Pending Call", "Raw Lead", "Call Failed - Retry Scheduled")
+PENDING_STATUSES = ("Pending Call", "Raw Lead", "Call Failed - Retry Scheduled",
+                    "Dispatch Failed - Retry Scheduled")
 
 OUTCOME_PROFILES = [
     {
@@ -106,6 +114,12 @@ async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
             await session.commit()
             return 0
 
+        provider = getattr(settings_row, "ai_provider", None) or "simulation"
+        if provider == "hirebuddha":
+            processed = await _run_hirebuddha_cycle(session, tenant_name, settings_row)
+            await session.commit()
+            return processed
+
         result = await session.execute(
             select(PipelineLead)
             .where(PipelineLead.stage == "raw")
@@ -145,6 +159,49 @@ async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
             processed += 1
 
         await session.commit()
+
+    return processed
+
+
+async def _run_hirebuddha_cycle(session, tenant_name: str, settings_row) -> int:
+    """
+    One HireBuddha sweep: re-queues leads whose callback never arrived, then
+    dispatches the next batch of pending raw leads to the voice platform.
+    Leads sit in "AI Call In Progress" until the CRM Update API callback
+    lands, so they are never double-dialled. The caller commits.
+    """
+    if not hirebuddha.is_configured(settings_row):
+        logger.warning(f"HireBuddha provider selected for {tenant_name} but the "
+                       "integration is disabled or missing a client id - skipping sweep.")
+        return 0
+
+    processed = 0
+
+    # 1. Recover leads whose call result never came back
+    result = await session.execute(
+        select(PipelineLead)
+        .where(PipelineLead.stage == "raw")
+        .where(PipelineLead.status == hirebuddha.STATUS_IN_PROGRESS)
+    )
+    for lead in result.scalars().all():
+        if hirebuddha.requeue_if_callback_overdue(lead, settings_row.ai_retry_limit):
+            await pipeline_service.write_audit(
+                session, tenant_name, hirebuddha.DISPATCH_ACTOR,
+                f"Lead {lead.id} re-queued: no HireBuddha callback within "
+                f"the configured timeout.", status="Failed")
+
+    # 2. Dispatch the next batch of pending leads
+    result = await session.execute(
+        select(PipelineLead)
+        .where(PipelineLead.stage == "raw")
+        .where(PipelineLead.status.in_(hirebuddha.DISPATCH_PENDING_STATUSES))
+        .where(PipelineLead.call_attempts < settings_row.ai_retry_limit)
+        .order_by(PipelineLead.created_at)
+        .limit(settings_row.ai_batch_size)
+    )
+    for lead in result.scalars().all():
+        await hirebuddha.dispatch_lead(session, lead, settings_row, tenant_name)
+        processed += 1
 
     return processed
 

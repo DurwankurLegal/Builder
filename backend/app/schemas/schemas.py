@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional, List, Any
 from datetime import datetime
 
@@ -186,6 +186,13 @@ class PipelineLeadResponse(BaseModel):
     recording_available: bool = False
     call_attempts: int = 0
     last_call_attempt: Optional[str] = None
+    call_recording_url: Optional[str] = None
+    ai_notes: Optional[str] = None
+    disposition: Optional[str] = None
+    lead_temperature: Optional[str] = None
+    dispatch_correlation_id: Optional[str] = None
+    dispatched_at: Optional[str] = None
+    callback_received_at: Optional[str] = None
     contacted_by: Optional[str] = None
     remarks: Optional[str] = None
     site_visit_status: Optional[str] = None
@@ -237,6 +244,9 @@ class LeadSettingResponse(BaseModel):
     ai_call_interval_seconds: int
     ai_retry_limit: int
     ai_batch_size: int
+    ai_provider: str = "simulation"
+    hb_client_id: Optional[str] = None
+    hb_entity_id: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -248,6 +258,9 @@ class LeadSettingUpdate(BaseModel):
     ai_call_interval_seconds: Optional[int] = None
     ai_retry_limit: Optional[int] = None
     ai_batch_size: Optional[int] = None
+    ai_provider: Optional[str] = Field(default=None, pattern="^(simulation|hirebuddha)$")
+    hb_client_id: Optional[str] = None
+    hb_entity_id: Optional[str] = None
 
 class AICallResult(BaseModel):
     lead_id: str
@@ -258,6 +271,75 @@ class AICallResult(BaseModel):
     summary: Optional[str] = None
     confidence: Optional[float] = None
     budget: Optional[str] = None
+
+
+# ========================================================
+# HIREBUDDHA INTEGRATION SCHEMAS (CRM Update API + audit)
+# ========================================================
+
+# Documented call outcomes (HireBuddha Integration Guide v1.0)
+HIREBUDDHA_OUTCOMES = {
+    "interested", "not_interested", "callback_requested",
+    "no_answer", "busy", "invalid_number",
+}
+HIREBUDDHA_TEMPERATURES = {"hot", "warm", "cold"}
+
+
+class HireBuddhaCallback(BaseModel):
+    """
+    Payload HireBuddha posts to the CRM Update API after every AI call.
+    Strictly validated against the documented v1.0 contract; unknown extra
+    fields are ignored, undocumented enum values are rejected with a 422.
+    """
+    lead_id: Optional[str] = None                 # must match the URL path when present
+    call_status: str = "completed"
+    call_outcome: str
+    call_summary: Optional[str] = None
+    ai_notes: Optional[str] = None                # AI-generated notes (optional extension)
+    call_duration: Optional[int | str] = None     # seconds, or preformatted "3m 20s"
+    call_recording_url: Optional[str] = None
+    recording_url: Optional[str] = None           # tolerated alias for call_recording_url
+    next_action: Optional[str] = None
+    next_action_date: Optional[str] = None        # ISO-8601
+    lead_temperature: Optional[str] = None        # hot / warm / cold
+    updated_at: Optional[str] = None              # ISO-8601
+    updated_by: Optional[str] = "hirebuddha_agent"
+
+    @field_validator("call_outcome")
+    @classmethod
+    def outcome_documented(cls, v: str) -> str:
+        value = (v or "").strip().lower()
+        if value not in HIREBUDDHA_OUTCOMES:
+            raise ValueError(f"call_outcome must be one of {sorted(HIREBUDDHA_OUTCOMES)}")
+        return value
+
+    @field_validator("lead_temperature")
+    @classmethod
+    def temperature_documented(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
+        value = str(v).strip().lower()
+        if value not in HIREBUDDHA_TEMPERATURES:
+            raise ValueError(f"lead_temperature must be one of {sorted(HIREBUDDHA_TEMPERATURES)}")
+        return value
+
+
+class IntegrationLogResponse(BaseModel):
+    id: int
+    date: datetime
+    provider: str
+    direction: str
+    endpoint: str
+    lead_id: Optional[str] = None
+    request_payload: Any = None
+    response_payload: Any = None
+    status_code: Optional[int] = None
+    outcome: str
+    error: Optional[str] = None
+    attempt: int = 1
+
+    class Config:
+        from_attributes = True
 
 
 # ========================================================

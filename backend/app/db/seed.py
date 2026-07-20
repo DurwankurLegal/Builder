@@ -79,6 +79,13 @@ SCHEMA_TABLES_DDL = [
         recording_available BOOLEAN DEFAULT FALSE,
         call_attempts INTEGER DEFAULT 0,
         last_call_attempt VARCHAR(50) NULL,
+        call_recording_url VARCHAR(500) NULL,
+        ai_notes VARCHAR(2000) NULL,
+        disposition VARCHAR(100) NULL,
+        lead_temperature VARCHAR(20) NULL,
+        dispatch_correlation_id VARCHAR(100) NULL,
+        dispatched_at VARCHAR(50) NULL,
+        callback_received_at VARCHAR(50) NULL,
         contacted_by VARCHAR(100) NULL,
         remarks VARCHAR(1000) NULL,
         site_visit_status VARCHAR(50) NULL,
@@ -105,7 +112,24 @@ SCHEMA_TABLES_DDL = [
         ai_calling_enabled BOOLEAN DEFAULT TRUE,
         ai_call_interval_seconds INTEGER DEFAULT 45,
         ai_retry_limit INTEGER DEFAULT 3,
-        ai_batch_size INTEGER DEFAULT 2
+        ai_batch_size INTEGER DEFAULT 2,
+        ai_provider VARCHAR(50) DEFAULT 'simulation',
+        hb_client_id VARCHAR(100) NULL,
+        hb_entity_id VARCHAR(100) NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.integration_logs (
+        id SERIAL PRIMARY KEY,
+        date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        provider VARCHAR(50) DEFAULT 'hirebuddha',
+        direction VARCHAR(20) NOT NULL,
+        endpoint VARCHAR(500) NOT NULL,
+        lead_id VARCHAR(50) NULL,
+        request_payload JSON DEFAULT '{{}}',
+        response_payload JSON DEFAULT '{{}}',
+        status_code INTEGER NULL,
+        outcome VARCHAR(50) DEFAULT 'Success',
+        error VARCHAR(1000) NULL,
+        attempt INTEGER DEFAULT 1
     )""",
     """CREATE TABLE IF NOT EXISTS {schema}.bookings (
         bookingNo VARCHAR(50) PRIMARY KEY,
@@ -130,6 +154,21 @@ USER_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER DEFAULT 0",
     "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS force_password_change BOOLEAN DEFAULT FALSE",
     "ALTER TABLE {schema}.users ADD COLUMN IF NOT EXISTS last_login TIMESTAMP NULL",
+]
+
+# HireBuddha voice-integration columns for schemas provisioned before the
+# integration existed (same idempotent pattern as USER_COLUMN_MIGRATIONS).
+HIREBUDDHA_COLUMN_MIGRATIONS = [
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS call_recording_url VARCHAR(500) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS ai_notes VARCHAR(2000) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS disposition VARCHAR(100) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS lead_temperature VARCHAR(20) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS dispatch_correlation_id VARCHAR(100) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS dispatched_at VARCHAR(50) NULL",
+    "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS callback_received_at VARCHAR(50) NULL",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT 'simulation'",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_client_id VARCHAR(100) NULL",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_entity_id VARCHAR(100) NULL",
 ]
 
 # The single workspace whose admin is the system-wide Super Admin. Admins of
@@ -187,7 +226,7 @@ async def seed_all():
         await conn.run_sync(Base.metadata.create_all)
         # public.users predates the account-security columns when the table
         # already existed (create_all never alters an existing table).
-        for alter in USER_COLUMN_MIGRATIONS:
+        for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS:
             await conn.execute(text(alter.format(schema="public")))
         print("Spawned public schema tables.")
 
@@ -239,7 +278,7 @@ async def seed_all():
             for ddl in SCHEMA_TABLES_DDL:
                 await conn.execute(text(ddl.format(schema=schema)))
             # Idempotent migrations for schemas created before these columns existed
-            for alter in USER_COLUMN_MIGRATIONS:
+            for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS:
                 await conn.execute(text(alter.format(schema=schema)))
             print(f"Spawned workspace tables for schema: {schema}")
             

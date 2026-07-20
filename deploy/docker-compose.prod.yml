@@ -76,6 +76,11 @@ services:
       # Single process owns the AI calling loop (see deploy/README.md)
       RUN_AI_AGENT: ${RUN_AI_AGENT:-1}
       SEED_DEMO_DATA: "0"
+      # HireBuddha voice integration (see docs/HIREBUDDHA_INTEGRATION.md)
+      HIREBUDDHA_ENABLED: ${HIREBUDDHA_ENABLED:-1}
+      HIREBUDDHA_CALLBACK_TOKEN: ${HIREBUDDHA_CALLBACK_TOKEN:?generate with openssl rand -hex 32}
+      HIREBUDDHA_CLIENT_ID: ${HIREBUDDHA_CLIENT_ID:-3ffe9166-8dae-4488-a6a4-387dad47f3f7}
+      HIREBUDDHA_ENTITY_ID: ${HIREBUDDHA_ENTITY_ID:-65b0ec26-42c1-4a63-b03e-68692ee30c9b}
     ports:
       - "127.0.0.1:18000:8000"
     depends_on:

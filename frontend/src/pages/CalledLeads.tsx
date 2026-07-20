@@ -10,14 +10,19 @@ import {
   PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
 } from '../components/pipeline/pipelineCommon';
 
-/** Fetches the call recording as an authed blob and plays it inline. */
+/**
+ * Plays the AI call recording. Provider-hosted recordings (HireBuddha) play
+ * straight from their URL; otherwise the recording streams as an authed blob
+ * from the CRM API.
+ */
 const RecordingModal = ({ lead, onClose }: { lead: PipelineLead; onClose: () => void }) => {
   const { showToast } = useUIStore();
   const isAdmin = useIsAdmin();
-  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [audioUrl, setAudioUrl] = useState<string | null>(lead.call_recording_url || null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    if (lead.call_recording_url) return; // external provider URL plays directly
     let objectUrl: string | null = null;
     (async () => {
       try {
@@ -29,7 +34,7 @@ const RecordingModal = ({ lead, onClose }: { lead: PipelineLead; onClose: () => 
       }
     })();
     return () => { if (objectUrl) URL.revokeObjectURL(objectUrl); };
-  }, [lead.id]);
+  }, [lead.id, lead.call_recording_url]);
 
   const downloadRecording = async () => {
     try {
@@ -74,8 +79,21 @@ const RecordingModal = ({ lead, onClose }: { lead: PipelineLead; onClose: () => 
             <p style={{ fontSize: 'var(--font-size-sm)' }}>{lead.ai_summary}</p>
             <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: 'var(--spacing-2)' }}>
               Outcome: <b>{lead.ai_outcome}</b>
+              {lead.disposition && <> · Disposition: <b>{lead.disposition}</b></>}
+              {lead.lead_temperature && <> · Temperature: <b style={{ textTransform: 'capitalize' }}>{lead.lead_temperature}</b></>}
               {lead.ai_confidence != null && <> · Confidence: <b>{Math.round(Number(lead.ai_confidence) * 100)}%</b></>}
             </p>
+          </div>
+        )}
+        {lead.ai_notes && (
+          <div className="card" style={{ background: 'var(--bg-muted)' }}>
+            <h4 style={{ fontSize: 'var(--font-size-sm)', marginBottom: 'var(--spacing-2)' }}>AI Notes</h4>
+            <p style={{ fontSize: 'var(--font-size-sm)' }}>{lead.ai_notes}</p>
+            {lead.next_followup_date && (
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: 'var(--spacing-2)' }}>
+                Next follow-up: <b>{lead.next_followup_date}</b>
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -192,6 +210,7 @@ export const CalledLeads = () => {
                 <SortableTh field="project" label="Project" sort={sort} order={order} onSort={onSort} />
                 <th>Budget</th>
                 <SortableTh field="interest_status" label="Interest" sort={sort} order={order} onSort={onSort} />
+                <th>Temp</th>
                 <SortableTh field="called_at" label="Called At" sort={sort} order={order} onSort={onSort} />
                 <SortableTh field="call_duration" label="Duration" sort={sort} order={order} onSort={onSort} />
                 <th>AI Outcome</th>
@@ -201,9 +220,9 @@ export const CalledLeads = () => {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr><td colSpan={13} style={{ textAlign: 'center', padding: 'var(--spacing-8)' }}>Querying called leads...</td></tr>
+                <tr><td colSpan={14} style={{ textAlign: 'center', padding: 'var(--spacing-8)' }}>Querying called leads...</td></tr>
               ) : items.length === 0 ? (
-                <tr><td colSpan={13} style={{ textAlign: 'center', padding: 'var(--spacing-8)', color: 'var(--text-muted)' }}>
+                <tr><td colSpan={14} style={{ textAlign: 'center', padding: 'var(--spacing-8)', color: 'var(--text-muted)' }}>
                   No called leads yet — the AI Calling Agent moves leads here after successful calls.
                 </td></tr>
               ) : items.map(lead => (
@@ -221,6 +240,18 @@ export const CalledLeads = () => {
                     <span className={`badge ${lead.interest_status === 'Interested' ? 'badge-success' : lead.interest_status === 'Not Interested' ? 'badge-danger' : 'badge-neutral'}`}>
                       {lead.interest_status || 'Unknown'}
                     </span>
+                  </td>
+                  <td>
+                    {lead.lead_temperature ? (
+                      <span
+                        className={`badge ${lead.lead_temperature === 'hot' ? 'badge-danger' : lead.lead_temperature === 'warm' ? 'badge-warning' : 'badge-info'}`}
+                        style={{ textTransform: 'capitalize' }}
+                      >
+                        {lead.lead_temperature}
+                      </span>
+                    ) : (
+                      <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>—</span>
+                    )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap' }}>{lead.called_at || '—'}</td>
                   <td>{lead.call_duration || '—'}</td>

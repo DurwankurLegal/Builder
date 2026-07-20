@@ -35,6 +35,13 @@ export interface PipelineLead {
   recording_available: boolean;
   call_attempts: number;
   last_call_attempt?: string;
+  call_recording_url?: string;
+  ai_notes?: string;
+  disposition?: string;
+  lead_temperature?: string;
+  dispatch_correlation_id?: string;
+  dispatched_at?: string;
+  callback_received_at?: string;
   contacted_by?: string;
   remarks?: string;
   site_visit_status?: string;

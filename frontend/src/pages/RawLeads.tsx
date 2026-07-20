@@ -12,7 +12,11 @@ import {
   PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
 } from '../components/pipeline/pipelineCommon';
 
-const RAW_STATUSES = ['Pending Call', 'Raw Lead', 'Call Failed - Retry Scheduled', 'Max Call Attempts Reached', 'Called (Manual)'];
+const RAW_STATUSES = [
+  'Pending Call', 'Raw Lead', 'AI Call In Progress', 'Call Failed - Retry Scheduled',
+  'Dispatch Failed - Retry Scheduled', 'Invalid Number - Halted',
+  'Max Call Attempts Reached', 'Called (Manual)'
+];
 
 export const RawLeads = () => {
   const queryClient = useQueryClient();
@@ -157,12 +161,15 @@ export const RawLeads = () => {
   };
 
   const statusBadge = (lead: PipelineLead) => {
-    const cls = (lead.status === 'Pending Call' || lead.status === 'Raw Lead') ? 'badge-info'
-      : lead.status === 'Call Failed - Retry Scheduled' ? 'badge-warning'
-      : lead.status === 'Max Call Attempts Reached' ? 'badge-danger'
+    const cls = (lead.status === 'Pending Call' || lead.status === 'Raw Lead' || lead.status === 'AI Call In Progress') ? 'badge-info'
+      : (lead.status === 'Call Failed - Retry Scheduled' || lead.status === 'Dispatch Failed - Retry Scheduled') ? 'badge-warning'
+      : (lead.status === 'Max Call Attempts Reached' || lead.status === 'Invalid Number - Halted') ? 'badge-danger'
       : 'badge-neutral';
+    const tooltip = lead.status === 'AI Call In Progress' && lead.dispatched_at
+      ? `Handed to the voice agent at ${lead.dispatched_at}`
+      : lead.last_call_attempt ? `Last attempt: ${lead.last_call_attempt}` : undefined;
     return (
-      <span className={`badge ${cls}`} title={lead.last_call_attempt ? `Last attempt: ${lead.last_call_attempt}` : undefined}>
+      <span className={`badge ${cls}`} title={tooltip}>
         {lead.status}{lead.call_attempts > 0 ? ` (${lead.call_attempts})` : ''}
       </span>
     );
@@ -197,10 +204,15 @@ export const RawLeads = () => {
         <div style={{ flex: 1, minWidth: '220px' }}>
           <div style={{ fontWeight: 'var(--font-weight-semibold)', fontSize: 'var(--font-size-sm)' }}>
             AI Calling Agent: {settings?.ai_calling_enabled ? 'Active' : 'Paused'}
+            {settings?.ai_calling_enabled && (
+              <span className={`badge ${settings?.ai_provider === 'hirebuddha' ? 'badge-success' : 'badge-neutral'}`} style={{ marginLeft: '8px' }}>
+                {settings?.ai_provider === 'hirebuddha' ? 'HireBuddha Voice Agent (Priya)' : 'Built-in Simulation'}
+              </span>
+            )}
           </div>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
             {settings?.ai_calling_enabled
-              ? `Auto-dials up to ${settings?.ai_batch_size} pending leads every ${settings?.ai_call_interval_seconds}s · retry limit ${settings?.ai_retry_limit} · successful calls move to Called Leads automatically`
+              ? `Auto-dials up to ${settings?.ai_batch_size} pending leads every ${settings?.ai_call_interval_seconds}s · retry limit ${settings?.ai_retry_limit} · ${settings?.ai_provider === 'hirebuddha' ? 'call results arrive via the HireBuddha callback and move leads to Called Leads' : 'successful calls move to Called Leads automatically'}`
               : 'Automatic dialing is paused - leads will remain in Raw Leads until re-enabled.'}
           </div>
         </div>
@@ -419,6 +431,9 @@ export const RawLeads = () => {
             const form = e.currentTarget;
             settingsMutation.mutate({
               ai_calling_enabled: (form.elements.namedItem('aiEnabled') as HTMLInputElement).checked,
+              ai_provider: (form.elements.namedItem('aiProvider') as HTMLSelectElement).value,
+              hb_client_id: (form.elements.namedItem('hbClientId') as HTMLInputElement).value.trim() || null,
+              hb_entity_id: (form.elements.namedItem('hbEntityId') as HTMLInputElement).value.trim() || null,
               ai_call_interval_seconds: parseInt((form.elements.namedItem('aiInterval') as HTMLInputElement).value, 10),
               ai_retry_limit: parseInt((form.elements.namedItem('aiRetry') as HTMLInputElement).value, 10),
               ai_batch_size: parseInt((form.elements.namedItem('aiBatch') as HTMLInputElement).value, 10),
@@ -431,6 +446,26 @@ export const RawLeads = () => {
               <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', fontSize: 'var(--font-size-sm)' }}>
                 <input type="checkbox" name="aiEnabled" defaultChecked={settings.ai_calling_enabled} /> Enable automatic AI calling
               </label>
+              <div className="form-group">
+                <label className="form-label">Voice provider</label>
+                <select name="aiProvider" defaultValue={settings.ai_provider || 'simulation'} className="form-control" style={{ width: '100%' }}>
+                  <option value="simulation">Built-in Simulation (demo, no real calls)</option>
+                  <option value="hirebuddha">HireBuddha AI Voice Agent (real outbound calls)</option>
+                </select>
+                <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  HireBuddha places real phone calls to your leads and posts the results back into this CRM.
+                </p>
+              </div>
+              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">HireBuddha Company ID (optional override)</label>
+                  <input type="text" name="hbClientId" defaultValue={settings.hb_client_id || ''} placeholder="Uses the global default when blank" className="form-control" style={{ width: '100%' }} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">HireBuddha Agent ID (optional override)</label>
+                  <input type="text" name="hbEntityId" defaultValue={settings.hb_entity_id || ''} placeholder="Uses the global default when blank" className="form-control" style={{ width: '100%' }} />
+                </div>
+              </div>
               <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label className="form-label">Call interval (seconds)</label>

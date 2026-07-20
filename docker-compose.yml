@@ -40,6 +40,8 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@postgres:5432/buildercrm
       - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=PRODUCTION_JWT_SECRET_PASSED_VIA_ENVIRONMENT_VARIABLES_987654321
+      # HireBuddha callback auth (dev-only token; production generates its own)
+      - HIREBUDDHA_CALLBACK_TOKEN=dev-hirebuddha-callback-token
     ports:
       - "8000:8000"
     depends_on:

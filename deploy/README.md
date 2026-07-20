@@ -63,9 +63,14 @@ chmod 600 .env
 
 echo "POSTGRES_PASSWORD=$(openssl rand -base64 32)"
 echo "SECRET_KEY=$(openssl rand -hex 48)"
-# paste both into .env, replacing the CHANGE_ME values
+echo "HIREBUDDHA_CALLBACK_TOKEN=$(openssl rand -hex 32)"
+# paste all three into .env, replacing the CHANGE_ME values
 nano .env
 ```
+
+> `HIREBUDDHA_CALLBACK_TOKEN` authenticates call-result callbacks from the
+> HireBuddha voice platform — share it securely with the HireBuddha team
+> (see docs/HIREBUDDHA_INTEGRATION.md for the full integration handshake).
 
 > The application ships with an insecure default `SECRET_KEY`. Setting a real
 > one here is mandatory — it signs every session token.

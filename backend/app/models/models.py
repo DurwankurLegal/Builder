@@ -131,6 +131,15 @@ class PipelineLead(Base):
     call_attempts = Column(Integer, default=0)
     last_call_attempt = Column(String(50), nullable=True)
 
+    # External voice provider data (populated by the HireBuddha integration)
+    call_recording_url = Column(String(500), nullable=True)   # provider-hosted recording
+    ai_notes = Column(String(2000), nullable=True)            # AI-generated notes
+    disposition = Column(String(100), nullable=True)          # provider call_outcome verbatim
+    lead_temperature = Column(String(20), nullable=True)      # hot / warm / cold
+    dispatch_correlation_id = Column(String(100), nullable=True)  # provider tracking id
+    dispatched_at = Column(String(50), nullable=True)         # when we handed the lead to the dialer
+    callback_received_at = Column(String(50), nullable=True)  # when the call result came back
+
     # Sales qualification data (populated in the Qualified stage)
     contacted_by = Column(String(100), nullable=True)
     remarks = Column(String(1000), nullable=True)
@@ -167,6 +176,35 @@ class LeadSetting(Base):
     ai_call_interval_seconds = Column(Integer, default=45)
     ai_retry_limit = Column(Integer, default=3)
     ai_batch_size = Column(Integer, default=2)
+    # Voice provider: 'simulation' (built-in demo dialer) or 'hirebuddha'.
+    # Defaults to simulation so existing workspaces never dial real numbers
+    # until an admin deliberately switches the provider on.
+    ai_provider = Column(String(50), default="simulation")
+    # Optional per-workspace HireBuddha overrides (fall back to global config)
+    hb_client_id = Column(String(100), nullable=True)
+    hb_entity_id = Column(String(100), nullable=True)
+
+
+class IntegrationLog(Base):
+    """
+    Request/response audit for every external integration exchange
+    (HireBuddha dispatches and callbacks). One row per HTTP attempt so
+    retries and failures are individually traceable.
+    """
+    __tablename__ = "integration_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    date = Column(DateTime, default=datetime.utcnow)
+    provider = Column(String(50), default="hirebuddha")
+    direction = Column(String(20), nullable=False)  # outbound | inbound
+    endpoint = Column(String(500), nullable=False)
+    lead_id = Column(String(50), nullable=True)
+    request_payload = Column(JSON, default=dict)
+    response_payload = Column(JSON, default=dict)
+    status_code = Column(Integer, nullable=True)
+    outcome = Column(String(50), default="Success")  # Success | Failed
+    error = Column(String(1000), nullable=True)
+    attempt = Column(Integer, default=1)
 
 
 class AuditLog(Base):
