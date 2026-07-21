@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, text
 from typing import List
 from app.api.deps import (
-    get_db, require_user_admin, require_super_admin, client_ip,
+    get_db, get_current_user, require_user_admin, require_super_admin, client_ip,
     SUPER_ADMIN, TENANT_ADMIN
 )
 from app.db.session import (
@@ -129,6 +129,19 @@ async def assignable_roles(actor: User = Depends(require_user_admin)):
     if actor.role == SUPER_ADMIN:
         return ASSIGNABLE_ROLES
     return [r for r in ASSIGNABLE_ROLES if r != SUPER_ADMIN]
+
+
+@router.get("/executives", response_model=List[str])
+async def list_executive_names(
+    db: AsyncSession = Depends(get_db),
+    actor: User = Depends(get_current_user)
+):
+    """
+    Active usernames in this workspace, for task/lead assignment dropdowns.
+    Open to every authenticated role (exposes names only, no account data).
+    """
+    result = await db.execute(select(User).where(User.is_active == True).order_by(User.username))  # noqa: E712
+    return [u.username for u in result.scalars().all()]
 
 
 @router.get("/{user_id}", response_model=AdminUserResponse)

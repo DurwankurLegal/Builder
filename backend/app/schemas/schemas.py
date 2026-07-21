@@ -324,6 +324,74 @@ class HireBuddhaCallback(BaseModel):
         return value
 
 
+# ========================================================
+# FOLLOW-UPS SCHEMAS
+# ========================================================
+
+class FollowUpCreate(BaseModel):
+    client: str = Field(min_length=2, max_length=255)
+    activity: str = Field(min_length=3, max_length=500)
+    date: str  # YYYY-MM-DD; must not be in the past (validated in the router)
+    executive: Optional[str] = None  # defaults to the creating user
+    task_type: str = Field(default="Call", pattern="^(Call|Meeting|Site Visit|Document)$")
+
+class FollowUpResponse(BaseModel):
+    id: int
+    client: str
+    activity: str
+    date: str
+    executive: str
+    task_type: str
+    status: str
+    created_by: str
+
+    class Config:
+        from_attributes = True
+
+
+# ========================================================
+# WORKSPACE SETTINGS SCHEMAS
+# ========================================================
+
+class WorkspaceSettingResponse(BaseModel):
+    company: dict = {}
+    projects: List[Any] = []
+    channels: List[Any] = []
+    updated_by: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+class WorkspaceSettingUpdate(BaseModel):
+    company: Optional[dict] = None
+    projects: Optional[List[Any]] = None
+    channels: Optional[List[Any]] = None
+
+
+# ========================================================
+# REPORTS / ANALYTICS SCHEMAS
+# ========================================================
+
+class ReportSummary(BaseModel):
+    total_leads: int
+    active_customers: int
+    deals_closed: int
+    deals_lost: int
+    followups_today: int
+    pending_site_visits: int
+    monthly_sales_value: float          # ₹, bookings created this calendar month
+    booking_portfolio_value: float      # ₹, all bookings
+    monthly_sales: List[Any]            # [{month, bookings, value_cr}]
+    lead_sources: List[Any]             # [{name, value}] counts across leads + pipeline
+    executive_performance: List[Any]    # [{name, deals, pipeline}]
+
+class NotificationItem(BaseModel):
+    type: str      # lead, followup, payment
+    title: str
+    detail: str
+    date: Optional[str] = None
+
+
 class IntegrationLogResponse(BaseModel):
     id: int
     date: datetime

@@ -1,14 +1,21 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_
 from typing import List, Optional
 from datetime import datetime
 from app.api.deps import get_db, get_current_user
-from app.models.models import Lead, Customer
+from app.models.models import Lead, Customer, Tenant
 from app.schemas.schemas import LeadCreate, LeadUpdate, LeadResponse
-from app.services.pipeline_service import next_suffix_id
+from app.services.pipeline_service import next_suffix_id, normalize_phone, write_audit
 
 router = APIRouter()
+
+
+async def _tenant_label(request: Request, db: AsyncSession) -> str:
+    tenant_id = getattr(request.state, "tenant_id", "public")
+    result = await db.execute(select(Tenant).where(Tenant.id == tenant_id))
+    tenant = result.scalars().first()
+    return tenant.name if tenant else tenant_id
 
 @router.get("", response_model=List[LeadResponse])
 async def list_leads(
@@ -60,7 +67,7 @@ async def get_lead(lead_id: str, db: AsyncSession = Depends(get_db), user = Depe
     return lead
 
 @router.post("", response_model=LeadResponse, status_code=status.HTTP_201_CREATED)
-async def create_lead(payload: LeadCreate, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
+async def create_lead(payload: LeadCreate, request: Request, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
     """
     Registers a new lead with historical logs in the database.
     """
@@ -82,13 +89,15 @@ async def create_lead(payload: LeadCreate, db: AsyncSession = Depends(get_db), u
         remarks=[],
         history=[{"date": now_date, "detail": "Lead profile registered in DB."}]
     )
-    
+
     db.add(new_lead)
+    await write_audit(db, await _tenant_label(request, db), user.username,
+                      f"Lead {new_id} ({payload.name}) registered in the leads database.")
     await db.commit()
     return new_lead
 
 @router.put("/{lead_id}", response_model=LeadResponse)
-async def update_lead(lead_id: str, payload: LeadUpdate, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
+async def update_lead(lead_id: str, payload: LeadUpdate, request: Request, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
     """
     Updates lead profile columns, status levels, remarks, and logs historical modifications.
     """
@@ -96,11 +105,12 @@ async def update_lead(lead_id: str, payload: LeadUpdate, db: AsyncSession = Depe
     lead = result.scalars().first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     update_data = payload.dict(exclude_unset=True)
-    
+
     # Append activity log history if status changes
-    if "status" in update_data and update_data["status"] != lead.status:
+    status_changed = "status" in update_data and update_data["status"] != lead.status
+    if status_changed:
         now_str = datetime.now().strftime("%Y-%m-%d")
         history = list(lead.history or [])
         history.append({
@@ -108,26 +118,43 @@ async def update_lead(lead_id: str, payload: LeadUpdate, db: AsyncSession = Depe
             "detail": f"Status updated from {lead.status} to {update_data['status']} by {user.username}."
         })
         lead.history = history
-        
+
     for key, value in update_data.items():
         setattr(lead, key, value)
-        
+
+    if status_changed:
+        await write_audit(db, await _tenant_label(request, db), user.username,
+                          f"Lead {lead_id} ({lead.name}) status changed to {lead.status}.")
     await db.commit()
     return lead
 
 @router.post("/{lead_id}/convert", response_model=LeadResponse)
-async def convert_lead(lead_id: str, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
+async def convert_lead(lead_id: str, request: Request, db: AsyncSession = Depends(get_db), user = Depends(get_current_user)):
     """
-    Converts a qualified lead into an active customer registry.
+    Converts a qualified lead into an active customer registry. Per the
+    business rules, the lead's email/mobile must not already exist in the
+    customer database, and the conversion is audit-logged.
     """
     result = await db.execute(select(Lead).where(Lead.id == lead_id))
     lead = result.scalars().first()
     if not lead:
         raise HTTPException(status_code=404, detail="Lead not found")
-        
+
     if lead.status == "Converted":
         raise HTTPException(status_code=400, detail="Lead has already been converted")
-        
+
+    # Duplicate validation against the existing customer database (SRS 4.1)
+    lead_phone = normalize_phone(lead.phone)
+    lead_email = (lead.email or "").strip().lower()
+    result = await db.execute(select(Customer.id, Customer.phone, Customer.email))
+    for cust_id_row, c_phone, c_email in result.all():
+        if lead_phone and normalize_phone(c_phone) == lead_phone:
+            raise HTTPException(status_code=409,
+                                detail=f"Conversion blocked: mobile number already belongs to customer {cust_id_row}")
+        if lead_email and (c_email or "").strip().lower() == lead_email:
+            raise HTTPException(status_code=409,
+                                detail=f"Conversion blocked: email already belongs to customer {cust_id_row}")
+
     now_str = datetime.now().strftime("%Y-%m-%d")
     
     # Update Lead Status
@@ -160,5 +187,7 @@ async def convert_lead(lead_id: str, db: AsyncSession = Depends(get_db), user = 
     )
     
     db.add(new_customer)
+    await write_audit(db, await _tenant_label(request, db), user.username,
+                      f"Lead {lead.id} ({lead.name}) converted to customer {cust_id}.")
     await db.commit()
     return lead

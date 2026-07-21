@@ -20,7 +20,7 @@ import random
 import time
 from sqlalchemy import select, text
 from loguru import logger
-from app.db.session import async_session_maker
+from app.db.session import async_session_maker, resolve_schema, schema_exists, InvalidTenantError
 from app.models.models import Tenant, PipelineLead
 from app.services import pipeline_service, hirebuddha
 
@@ -103,10 +103,19 @@ async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
     Runs one AI calling sweep inside a tenant schema. Returns number of leads processed.
     Each lead is committed atomically with its history + audit rows.
     """
-    schema = tenant_id.replace("-", "_").lower()
+    # Hard-validate before interpolating into SET search_path; a tenant row
+    # with a malformed id (or a missing schema) is skipped, never executed.
+    try:
+        schema = resolve_schema(tenant_id)
+    except InvalidTenantError:
+        logger.warning(f"AI agent skipping tenant with invalid id: {tenant_id!r}")
+        return 0
     processed = 0
 
     async with async_session_maker() as session:
+        if not await schema_exists(session, schema):
+            logger.warning(f"AI agent skipping tenant without schema: {tenant_id!r}")
+            return 0
         await session.execute(text(f"SET search_path TO {schema}, public"))
         settings_row = await pipeline_service.get_settings(session)
 
@@ -217,21 +226,34 @@ async def worker_loop():
                 tenants = [(t.id, t.name) for t in result.scalars().all()]
 
             for tenant_id, tenant_name in tenants:
-                schema = tenant_id.replace("-", "_").lower()
-                # respect each workspace's configured calling interval
-                async with async_session_maker() as session:
-                    await session.execute(text(f"SET search_path TO {schema}, public"))
-                    settings_row = await pipeline_service.get_settings(session)
-                    interval = max(settings_row.ai_call_interval_seconds or 45, GLOBAL_TICK_SECONDS)
-                    await session.commit()
+                # One tenant's failure (bad id, missing schema, transient DB
+                # error) must never abort the sweep for every other workspace.
+                try:
+                    try:
+                        schema = resolve_schema(tenant_id)
+                    except InvalidTenantError:
+                        logger.warning(f"AI agent skipping tenant with invalid id: {tenant_id!r}")
+                        continue
 
-                if time.monotonic() - _last_run.get(tenant_id, 0) < interval:
-                    continue
-                _last_run[tenant_id] = time.monotonic()
+                    # respect each workspace's configured calling interval
+                    async with async_session_maker() as session:
+                        if not await schema_exists(session, schema):
+                            logger.warning(f"AI agent skipping tenant without schema: {tenant_id!r}")
+                            continue
+                        await session.execute(text(f"SET search_path TO {schema}, public"))
+                        settings_row = await pipeline_service.get_settings(session)
+                        interval = max(settings_row.ai_call_interval_seconds or 45, GLOBAL_TICK_SECONDS)
+                        await session.commit()
 
-                count = await run_cycle_for_tenant(tenant_id, tenant_name)
-                if count:
-                    logger.info(f"AI Calling Agent processed {count} lead(s) for {tenant_name}.")
+                    if time.monotonic() - _last_run.get(tenant_id, 0) < interval:
+                        continue
+                    _last_run[tenant_id] = time.monotonic()
+
+                    count = await run_cycle_for_tenant(tenant_id, tenant_name)
+                    if count:
+                        logger.info(f"AI Calling Agent processed {count} lead(s) for {tenant_name}.")
+                except Exception as exc:
+                    logger.error(f"AI Calling Agent error for tenant {tenant_id!r}: {exc}")
         except Exception as exc:
             logger.error(f"AI Calling Agent cycle error: {exc}")
 

@@ -83,9 +83,39 @@ class Customer(Base):
     documents = Column(JSON, default=list) # Checklist elements string array
 
 
+class FollowUp(Base):
+    """Scheduled relationship tasks (calls, site visits, document collection)."""
+    __tablename__ = "followups"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    client = Column(String(255), nullable=False)
+    activity = Column(String(500), nullable=False)
+    date = Column(String(50), nullable=False)  # YYYY-MM-DD
+    executive = Column(String(100), nullable=False)
+    task_type = Column(String(50), default="Call")  # Call, Meeting, Site Visit, Document
+    status = Column(String(50), default="Pending")  # Pending, Completed
+    created_by = Column(String(100), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class WorkspaceSetting(Base):
+    """
+    Per-tenant system settings (single row per schema): company profile,
+    projects directory, and lead channel toggles, stored as JSON documents.
+    """
+    __tablename__ = "workspace_settings"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company = Column(JSON, default=dict)    # legal name, RERA id, CIN, GSTIN, address
+    projects = Column(JSON, default=list)   # [{id, name, location, rera, units}]
+    channels = Column(JSON, default=list)   # [{name, enabled}]
+    updated_by = Column(String(100), nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class Booking(Base):
     __tablename__ = "bookings"
-    
+
     bookingNo = Column("bookingno", String(50), primary_key=True)
     customer_id = Column(String(50), nullable=False)
     customer_name = Column(String(255), nullable=False)
@@ -98,6 +128,7 @@ class Booking(Base):
     agreement_status = Column(String(50), default="Pending") # Pending, Executed
     registration_status = Column(String(50), default="Pending") # Pending, Applied, Completed
     milestones = Column(JSON, default=list) # Milestones list
+    created_at = Column(DateTime, default=datetime.utcnow)  # for monthly sales aggregation
 
 
 class PipelineLead(Base):

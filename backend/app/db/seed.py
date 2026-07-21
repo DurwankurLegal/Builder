@@ -131,6 +131,25 @@ SCHEMA_TABLES_DDL = [
         error VARCHAR(1000) NULL,
         attempt INTEGER DEFAULT 1
     )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.followups (
+        id SERIAL PRIMARY KEY,
+        client VARCHAR(255) NOT NULL,
+        activity VARCHAR(500) NOT NULL,
+        date VARCHAR(50) NOT NULL,
+        executive VARCHAR(100) NOT NULL,
+        task_type VARCHAR(50) DEFAULT 'Call',
+        status VARCHAR(50) DEFAULT 'Pending',
+        created_by VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
+    """CREATE TABLE IF NOT EXISTS {schema}.workspace_settings (
+        id SERIAL PRIMARY KEY,
+        company JSON DEFAULT '{{}}',
+        projects JSON DEFAULT '[]',
+        channels JSON DEFAULT '[]',
+        updated_by VARCHAR(100) NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""",
     """CREATE TABLE IF NOT EXISTS {schema}.bookings (
         bookingNo VARCHAR(50) PRIMARY KEY,
         customer_id VARCHAR(50) NOT NULL,
@@ -169,6 +188,11 @@ HIREBUDDHA_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT 'simulation'",
     "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_client_id VARCHAR(100) NULL",
     "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_entity_id VARCHAR(100) NULL",
+]
+
+# QA cycle 2 additive migrations (bookings date column for monthly reports)
+QA2_COLUMN_MIGRATIONS = [
+    "ALTER TABLE {schema}.bookings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
 ]
 
 # The single workspace whose admin is the system-wide Super Admin. Admins of
@@ -226,7 +250,7 @@ async def seed_all():
         await conn.run_sync(Base.metadata.create_all)
         # public.users predates the account-security columns when the table
         # already existed (create_all never alters an existing table).
-        for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS:
+        for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS:
             await conn.execute(text(alter.format(schema="public")))
         print("Spawned public schema tables.")
 
@@ -278,7 +302,7 @@ async def seed_all():
             for ddl in SCHEMA_TABLES_DDL:
                 await conn.execute(text(ddl.format(schema=schema)))
             # Idempotent migrations for schemas created before these columns existed
-            for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS:
+            for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS:
                 await conn.execute(text(alter.format(schema=schema)))
             print(f"Spawned workspace tables for schema: {schema}")
             

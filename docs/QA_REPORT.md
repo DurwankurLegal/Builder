@@ -1,5 +1,8 @@
 # Builder CRM — QA & Verification Report
 
+> **Newer cycle:** see [QA_REPORT_CYCLE2.md](QA_REPORT_CYCLE2.md) (2026-07-21) —
+> full-application audit: 17 defects fixed (2 critical security), suite now 153 tests.
+
 **Scope:** Lead pipeline feature set (Raw / Called / Qualified Leads, AI Calling
 Agent, bulk import/export, manual entry) plus cross-cutting audit of the wider
 application.

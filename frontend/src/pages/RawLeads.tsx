@@ -4,7 +4,7 @@ import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
 import {
   Plus, Upload, History, XCircle, PhoneForwarded, Star, UserCheck,
-  Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet
+  Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet, ScrollText, PhoneOutgoing
 } from 'lucide-react';
 import {
   usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
@@ -36,6 +36,7 @@ export const RawLeads = () => {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showImportsModal, setShowImportsModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showLogsModal, setShowLogsModal] = useState(false);
   const [historyLead, setHistoryLead] = useState<PipelineLead | null>(null);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,6 +114,25 @@ export const RawLeads = () => {
         : 'No pending leads for the AI agent right now.', 'info');
     }
   });
+
+  // HireBuddha: immediate single-lead dispatch (admin testing / priority leads)
+  const dispatchMutation = useMutation({
+    mutationFn: async (id: string) => (await apiClient.post(`/integrations/hirebuddha/dispatch/${id}`)).data,
+    onSuccess: (lead: PipelineLead) => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      showToast(`${lead.id} handed to the HireBuddha voice agent.`, 'success');
+    },
+    onError: (err: any) => showToast(err?.response?.data?.detail || 'Dispatch to HireBuddha failed.', 'danger')
+  });
+
+  // HireBuddha integration exchange log (admin troubleshooting/audit view)
+  const { data: hbLogs = [] } = useQuery({
+    queryKey: ['hirebuddha-logs'],
+    queryFn: async () => (await apiClient.get('/integrations/hirebuddha/logs', { params: { limit: 50 } })).data,
+    enabled: showLogsModal
+  });
+
+  const usingHireBuddha = settings?.ai_provider === 'hirebuddha';
 
   const items = data?.items || [];
   const allChecked = items.length > 0 && items.every(l => selected.has(l.id));
@@ -220,6 +240,11 @@ export const RawLeads = () => {
           <Zap size={14} style={{ marginRight: '4px' }} /> Run Cycle Now
         </button>
         {isAdmin && (
+          <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => setShowLogsModal(true)}>
+            <ScrollText size={14} style={{ marginRight: '4px' }} /> AI Logs
+          </button>
+        )}
+        {isAdmin && (
           <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => setShowSettingsModal(true)}>
             <Settings2 size={14} style={{ marginRight: '4px' }} /> Configure
           </button>
@@ -293,6 +318,13 @@ export const RawLeads = () => {
                   <td>{statusBadge(lead)}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px' }}>
+                      {isAdmin && usingHireBuddha && lead.status !== 'AI Call In Progress' && (
+                        <button className="btn btn-ghost" title="Send to HireBuddha AI agent now" style={{ padding: '4px', color: 'var(--brand-primary)' }}
+                          disabled={dispatchMutation.isPending}
+                          onClick={() => dispatchMutation.mutate(lead.id)}>
+                          <PhoneOutgoing size={14} />
+                        </button>
+                      )}
                       <button className="btn btn-ghost" title="Move to Called Leads" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'called' })}><PhoneForwarded size={14} /></button>
                       <button className="btn btn-ghost" title="Move to Qualified Leads" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'qualified' })}><Star size={14} /></button>
                       <button className="btn btn-ghost" title="Convert to Active Customer" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'customer' })}><UserCheck size={14} /></button>
@@ -493,6 +525,51 @@ export const RawLeads = () => {
               <button type="submit" className="btn btn-primary" disabled={settingsMutation.isPending}>Save Configuration</button>
             </div>
           </form>
+        </dialog>
+      )}
+
+      {/* HireBuddha Integration Logs Modal (admin) */}
+      {showLogsModal && (
+        <dialog open className="dialog" style={{ maxWidth: '760px', width: '95%' }}>
+          <div className="dialog-header">
+            <h3 className="dialog-title"><ScrollText size={16} style={{ marginRight: '6px', verticalAlign: 'text-bottom' }} />AI Integration Logs (HireBuddha)</h3>
+            <button className="dialog-close" onClick={() => setShowLogsModal(false)}><XCircle size={16} /></button>
+          </div>
+          <div className="dialog-body" style={{ maxHeight: '440px', overflowY: 'auto', padding: 0 }}>
+            <table className="data-table">
+              <thead>
+                <tr><th>Time</th><th>Direction</th><th>Lead</th><th>Outcome</th><th>HTTP</th><th>Detail</th></tr>
+              </thead>
+              <tbody>
+                {hbLogs.length === 0 ? (
+                  <tr><td colSpan={6} style={{ textAlign: 'center', padding: 'var(--spacing-6)', color: 'var(--text-muted)' }}>
+                    No integration exchanges recorded yet for this workspace.
+                  </td></tr>
+                ) : hbLogs.map((l: any) => (
+                  <tr key={l.id}>
+                    <td style={{ whiteSpace: 'nowrap', fontSize: 'var(--font-size-xs)' }}>{new Date(l.date).toLocaleString()}</td>
+                    <td>
+                      <span className={`badge ${l.direction === 'outbound' ? 'badge-info' : 'badge-neutral'}`}>
+                        {l.direction === 'outbound' ? 'CRM → HB' : 'HB → CRM'}
+                      </span>
+                    </td>
+                    <td style={{ fontWeight: 600 }}>{l.lead_id || '—'}</td>
+                    <td>
+                      <span className={`badge ${l.outcome === 'Success' ? 'badge-success' : 'badge-danger'}`}>{l.outcome}</span>
+                    </td>
+                    <td>{l.status_code ?? '—'}</td>
+                    <td style={{ maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 'var(--font-size-xs)' }}
+                        title={l.error || JSON.stringify(l.response_payload)}>
+                      {l.error || JSON.stringify(l.response_payload)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="dialog-footer">
+            <button className="btn btn-primary" onClick={() => setShowLogsModal(false)}>Close</button>
+          </div>
         </dialog>
       )}
 

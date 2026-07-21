@@ -69,16 +69,11 @@ export const LostDeals = () => {
                   <td colSpan={8} style={{ textAlign: 'center', padding: 'var(--spacing-8)', color: 'var(--text-muted)' }}>No records of lost leads. Good job!</td>
                 </tr>
               ) : leads.map((l: any) => {
-                const lostLog = (l.history || []).find((h: any) => h.detail.includes('marked lost'));
-                let reason = 'Budget Constraint';
-                let competitor = 'Direct competitor';
-                
-                if (lostLog) {
-                  const matchReason = lostLog.detail.match(/Reason:\s([^.]+)/);
-                  const matchComp = lostLog.detail.match(/Competitor:\s([^.]+)/);
-                  if (matchReason) reason = matchReason[1];
-                  if (matchComp) competitor = matchComp[1];
-                }
+                // Reason/competitor come from the mark-lost history record; when
+                // absent we show a dash rather than inventing values.
+                const lostLog = (l.history || []).find((h: any) => (h.detail || '').includes('marked lost'));
+                const reason = lostLog?.detail.match(/Reason:\s([^.]+)/)?.[1] || null;
+                const competitor = lostLog?.detail.match(/Competitor:\s([^.]+)/)?.[1] || null;
 
                 return (
                   <tr key={l.id}>
@@ -88,9 +83,10 @@ export const LostDeals = () => {
                     <td>{l.budget}</td>
                     <td>{l.date}</td>
                     <td>
-                      <span className="badge badge-danger">{reason}</span>
+                      {reason ? <span className="badge badge-danger">{reason}</span>
+                        : <span style={{ color: 'var(--text-muted)' }}>—</span>}
                     </td>
-                    <td style={{ fontWeight: '500' }}>{competitor}</td>
+                    <td style={{ fontWeight: '500' }}>{competitor || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
                     <td>{l.executive}</td>
                   </tr>
                 );

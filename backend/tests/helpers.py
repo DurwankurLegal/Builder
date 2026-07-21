@@ -7,10 +7,10 @@ BASE_URL = os.getenv("TEST_BASE_URL", "http://localhost:8000")
 API = "/api/v1"
 
 DEFAULT_TENANT = "tenant-1"
-# The only other real schema now that the demo workspaces were removed. It is a
-# genuine, existing schema, so isolation tests still exercise the token-binding
-# code path rather than short-circuiting on "unknown workspace".
-ALT_TENANT = "public"
+# A second real provisioned workspace for cross-tenant isolation tests.
+# (The `public` schema is no longer a valid login surface: the QA security
+# pass restricted authentication to workspaces in the tenant directory.)
+ALT_TENANT = "tenant-2"
 # A workspace that is never provisioned - used to assert unknown tenants are
 # rejected instead of silently falling through to `public`.
 REMOVED_TENANT = "tenant-99"

@@ -42,6 +42,13 @@ export const MainLayout = () => {
     refetchInterval: 15000
   });
 
+  // Real alert feed: overdue milestones, due follow-ups, interested AI leads
+  const { data: notifications = [] } = useQuery({
+    queryKey: ['notifications', activeTenantId],
+    queryFn: async () => (await apiClient.get('/reports/notifications')).data,
+    refetchInterval: 60000
+  });
+
   const sidebarLinks: { label: string; path: string; icon: any; count?: number }[] = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
     { label: 'Raw Leads', path: '/raw-leads', icon: Inbox, count: pipelineStats?.raw },
@@ -211,31 +218,26 @@ export const MainLayout = () => {
             </select>
           </div>
 
-          {/* Notification Panel trigger */}
+          {/* Notification Panel trigger (live alert feed) */}
           <button className="action-icon-btn" id="notify-btn" onClick={() => setShowNotify(!showNotify)} aria-label="Show Alerts Notifications" style={{ position: 'relative' }}>
             <Bell size={18} />
-            <span className="btn-badge">3</span>
-            
+            {notifications.length > 0 && <span className="btn-badge">{Math.min(notifications.length, 99)}</span>}
+
             {showNotify && (
-              <div className="dropdown-menu active" id="notify-dropdown" style={{ display: 'block', right: 0, top: '45px', width: '280px', textAlign: 'left' }}>
-                <div className="dropdown-item">
-                  <div>
-                    <div style={{ fontWeight: 600 }}>New lead registered</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Divya Sen registered via Facebook</div>
+              <div className="dropdown-menu active" id="notify-dropdown" style={{ display: 'block', right: 0, top: '45px', width: '300px', maxHeight: '360px', overflowY: 'auto', textAlign: 'left' }}>
+                {notifications.length === 0 ? (
+                  <div className="dropdown-item">
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>No alerts right now — all caught up.</div>
                   </div>
-                </div>
-                <div className="dropdown-item">
-                  <div>
-                    <div style={{ fontWeight: 600 }}>Site Visit Completed</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>Aarav Mehta visited tower B flat 503</div>
+                ) : notifications.map((n: any, idx: number) => (
+                  <div className="dropdown-item" key={idx}>
+                    <div>
+                      <div style={{ fontWeight: 600 }}>{n.title}</div>
+                      <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{n.detail}</div>
+                      {n.date && <div style={{ fontSize: '10px', color: 'var(--text-muted)', marginTop: '2px' }}>{n.date}</div>}
+                    </div>
                   </div>
-                </div>
-                <div className="dropdown-item">
-                  <div>
-                    <div style={{ fontWeight: 600 }}>Milestone Payment Overdue</div>
-                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>BK-9001 (Kabir Malhotra) 5th floor slab payment</div>
-                  </div>
-                </div>
+                ))}
               </div>
             )}
           </button>
