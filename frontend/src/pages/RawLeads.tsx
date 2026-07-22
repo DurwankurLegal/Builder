@@ -110,10 +110,23 @@ export const RawLeads = () => {
     onSuccess: (res) => {
       queryClient.invalidateQueries({ queryKey: ['pipeline'] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      if (res.blocked) { showToast(res.detail, 'warning'); return; }
       showToast(res.processed > 0
         ? `AI agent processed ${res.processed} lead(s) this cycle.`
         : 'No pending leads for the AI agent right now.', 'info');
     }
+  });
+
+  // Manual mode: start AI calling for the selected leads.
+  const manualCallMutation = useMutation({
+    mutationFn: async (ids: string[]) => (await apiClient.post('/pipeline/ai/manual-call', { ids })).data,
+    onSuccess: (res) => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-stats'] });
+      showToast(res.detail, res.dispatched > 0 ? 'success' : 'warning');
+      setSelected(new Set());
+    },
+    onError: (err: any) => showToast(err?.response?.data?.detail || 'Could not start AI calling.', 'danger')
   });
 
   // HireBuddha: immediate single-lead dispatch (admin testing / priority leads)
@@ -224,22 +237,31 @@ export const RawLeads = () => {
         <Bot size={20} style={{ color: 'var(--brand-primary)' }} />
         <div style={{ flex: 1, minWidth: '220px' }}>
           <div style={{ fontWeight: 'var(--font-weight-semibold)', fontSize: 'var(--font-size-sm)' }}>
-            AI Calling Agent: {settings?.ai_calling_enabled ? 'Active' : 'Paused'}
+            AI Calling Agent: {settings?.ai_calling_enabled ? 'Enabled' : 'Disabled'}
             {settings?.ai_calling_enabled && (
-              <span className={`badge ${settings?.ai_provider === 'hirebuddha' ? 'badge-success' : 'badge-neutral'}`} style={{ marginLeft: '8px' }}>
-                {settings?.ai_provider === 'hirebuddha' ? 'HireBuddha Voice Agent (Priya)' : 'Built-in Simulation'}
-              </span>
+              <>
+                <span className={`badge ${settings?.ai_provider === 'hirebuddha' ? 'badge-success' : 'badge-neutral'}`} style={{ marginLeft: '8px' }}>
+                  {settings?.ai_provider === 'hirebuddha' ? 'HireBuddha Voice Agent (Priya)' : 'Built-in Simulation'}
+                </span>
+                <span className="badge badge-info" style={{ marginLeft: '6px', textTransform: 'capitalize' }}>
+                  {settings?.calling_mode || 'automatic'} mode
+                </span>
+              </>
             )}
           </div>
           <div style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>
-            {settings?.ai_calling_enabled
-              ? `Auto-dials up to ${settings?.ai_batch_size} pending leads every ${settings?.ai_call_interval_seconds}s · retry limit ${settings?.ai_retry_limit} · ${settings?.ai_provider === 'hirebuddha' ? 'call results arrive via the HireBuddha callback and move leads to Called Leads' : 'successful calls move to Called Leads automatically'}`
-              : 'Automatic dialing is paused - leads will remain in Raw Leads until re-enabled.'}
+            {!settings?.ai_calling_enabled
+              ? 'AI calling is disabled - enable it in Configure to start dialing leads.'
+              : (settings?.calling_mode === 'manual')
+                ? `Manual mode · select leads below and click "Start AI Calling" · window ${settings?.call_window_start}–${settings?.call_window_end} IST · max call ${Math.round((settings?.max_call_duration_seconds || 300) / 60)} min`
+                : `Automatic · up to ${settings?.ai_batch_size} leads / cycle every ${settings?.ai_call_interval_seconds}s · window ${settings?.call_window_start}–${settings?.call_window_end} IST · max call ${Math.round((settings?.max_call_duration_seconds || 300) / 60)} min · retry ${settings?.ai_retry_limit}`}
           </div>
         </div>
-        <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => runCycleMutation.mutate()}>
-          <Zap size={14} style={{ marginRight: '4px' }} /> Run Cycle Now
-        </button>
+        {settings?.calling_mode !== 'manual' && (
+          <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => runCycleMutation.mutate()}>
+            <Zap size={14} style={{ marginRight: '4px' }} /> Run Cycle Now
+          </button>
+        )}
         {isAdmin && (
           <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => setShowLogsModal(true)}>
             <ScrollText size={14} style={{ marginRight: '4px' }} /> AI Logs
@@ -270,6 +292,9 @@ export const RawLeads = () => {
         count={selected.size}
         onClear={() => setSelected(new Set())}
         actions={[
+          ...(settings?.calling_mode === 'manual'
+            ? [{ label: manualCallMutation.isPending ? 'Starting…' : 'Start AI Calling', icon: <PhoneOutgoing size={14} />, className: 'btn-primary', onClick: () => manualCallMutation.mutate([...selected]) }]
+            : []),
           { label: 'Move to Called', icon: <PhoneForwarded size={14} />, onClick: () => bulkMove.mutate({ ids: [...selected], target: 'called' }) },
           { label: 'Qualify', icon: <Star size={14} />, onClick: () => bulkMove.mutate({ ids: [...selected], target: 'qualified' }) },
           { label: 'Convert to Customer', icon: <UserCheck size={14} />, className: 'btn-success', onClick: () => bulkMove.mutate({ ids: [...selected], target: 'customer' }) },
@@ -469,23 +494,39 @@ export const RawLeads = () => {
           <form onSubmit={(e) => {
             e.preventDefault();
             const form = e.currentTarget;
+            const startT = (form.elements.namedItem('windowStart') as HTMLInputElement).value;
+            const endT = (form.elements.namedItem('windowEnd') as HTMLInputElement).value;
             settingsMutation.mutate({
               ai_calling_enabled: (form.elements.namedItem('aiEnabled') as HTMLInputElement).checked,
+              calling_mode: (form.elements.namedItem('callingMode') as HTMLSelectElement).value,
               ai_provider: (form.elements.namedItem('aiProvider') as HTMLSelectElement).value,
               hb_client_id: (form.elements.namedItem('hbClientId') as HTMLInputElement).value.trim() || null,
               hb_entity_id: (form.elements.namedItem('hbEntityId') as HTMLInputElement).value.trim() || null,
               ai_call_interval_seconds: parseInt((form.elements.namedItem('aiInterval') as HTMLInputElement).value, 10),
               ai_retry_limit: parseInt((form.elements.namedItem('aiRetry') as HTMLInputElement).value, 10),
               ai_batch_size: parseInt((form.elements.namedItem('aiBatch') as HTMLInputElement).value, 10),
+              max_call_duration_seconds: Math.round(parseFloat((form.elements.namedItem('maxDurationMin') as HTMLInputElement).value) * 60),
+              call_window_start: startT || '09:00',
+              call_window_end: endT || '19:00',
               dup_check_phone: (form.elements.namedItem('dupPhone') as HTMLInputElement).checked,
               dup_check_email: (form.elements.namedItem('dupEmail') as HTMLInputElement).checked,
             });
           }}>
-            <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)' }}>
-              <h4 style={{ fontSize: 'var(--font-size-sm)' }}>AI Calling Agent</h4>
+            <div className="dialog-body" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--spacing-4)', maxHeight: '64vh', overflowY: 'auto' }}>
+              <h4 style={{ fontSize: 'var(--font-size-sm)' }}>AI Calling</h4>
               <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', fontSize: 'var(--font-size-sm)' }}>
-                <input type="checkbox" name="aiEnabled" defaultChecked={settings.ai_calling_enabled} /> Enable automatic AI calling
+                <input type="checkbox" name="aiEnabled" defaultChecked={settings.ai_calling_enabled} /> Enable AI Calling
+                <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)' }}>(off by default — no lead is dialled until this is on)</span>
               </label>
+
+              <div className="form-group">
+                <label className="form-label">Calling Mode</label>
+                <select name="callingMode" defaultValue={settings.calling_mode || 'automatic'} className="form-control" style={{ width: '100%' }}>
+                  <option value="automatic">Automatic — the system initiates calls on its own</option>
+                  <option value="manual">Manual — you select leads and start calling</option>
+                </select>
+              </div>
+
               <div className="form-group">
                 <label className="form-label">Voice provider</label>
                 <select name="aiProvider" defaultValue={settings.ai_provider || 'hirebuddha'} className="form-control" style={{ width: '100%' }}>
@@ -507,20 +548,44 @@ export const RawLeads = () => {
                   <input type="text" name="hbEntityId" defaultValue={settings.hb_entity_id || ''} placeholder="Uses the global default when blank" className="form-control" style={{ width: '100%' }} />
                 </div>
               </div>
+
+              <h4 style={{ fontSize: 'var(--font-size-sm)' }}>Automatic Campaign</h4>
               <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Call interval (seconds)</label>
+                  <label className="form-label">Leads per Cycle</label>
+                  <input type="number" name="aiBatch" min={1} max={100} defaultValue={settings.ai_batch_size} className="form-control" style={{ width: '100%' }} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Cycle interval (seconds)</label>
                   <input type="number" name="aiInterval" min={15} max={3600} defaultValue={settings.ai_call_interval_seconds} className="form-control" style={{ width: '100%' }} />
                 </div>
                 <div className="form-group" style={{ flex: 1 }}>
                   <label className="form-label">Retry limit</label>
                   <input type="number" name="aiRetry" min={1} max={10} defaultValue={settings.ai_retry_limit} className="form-control" style={{ width: '100%' }} />
                 </div>
+              </div>
+
+              <h4 style={{ fontSize: 'var(--font-size-sm)' }}>Call Limits &amp; Schedule (IST)</h4>
+              <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>
                 <div className="form-group" style={{ flex: 1 }}>
-                  <label className="form-label">Batch size</label>
-                  <input type="number" name="aiBatch" min={1} max={20} defaultValue={settings.ai_batch_size} className="form-control" style={{ width: '100%' }} />
+                  <label className="form-label">Max call duration (minutes)</label>
+                  <input type="number" name="maxDurationMin" min={0.5} max={60} step={0.5}
+                    defaultValue={((settings.max_call_duration_seconds || 300) / 60).toString()}
+                    className="form-control" style={{ width: '100%' }} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Calling window — Start</label>
+                  <input type="time" name="windowStart" defaultValue={settings.call_window_start || '09:00'} className="form-control" style={{ width: '100%' }} />
+                </div>
+                <div className="form-group" style={{ flex: 1 }}>
+                  <label className="form-label">Calling window — End</label>
+                  <input type="time" name="windowEnd" defaultValue={settings.call_window_end || '19:00'} className="form-control" style={{ width: '100%' }} />
                 </div>
               </div>
+              <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '-6px' }}>
+                AI calls are only initiated between Start and End (India Standard Time). Set both to 00:00 for no time restriction.
+              </p>
+
               <h4 style={{ fontSize: 'var(--font-size-sm)' }}>Duplicate Detection Policy</h4>
               <label style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-2)', fontSize: 'var(--font-size-sm)' }}>
                 <input type="checkbox" name="dupPhone" defaultChecked={settings.dup_check_phone} /> Block duplicate phone numbers

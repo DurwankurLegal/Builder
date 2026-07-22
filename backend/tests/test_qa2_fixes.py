@@ -347,3 +347,99 @@ def test_leads_database_delete_admin_only_and_audited(client, admin_headers, sal
 def test_leads_database_delete_missing_returns_404(client, admin_headers):
     resp = client.delete(f"{API}/leads/LD-NON-EXISTENT", headers=admin_headers)
     assert resp.status_code == 404
+
+
+# ============================================================
+# AI Calling configuration (mode, leads/cycle, max duration, IST window)
+# ============================================================
+
+def test_within_call_window():
+    from datetime import datetime
+    from app.services.pipeline_service import within_call_window, IST
+    from app.models.models import LeadSetting
+
+    day = LeadSetting(call_window_start="09:00", call_window_end="19:00")
+    assert within_call_window(day, datetime(2026, 7, 22, 12, 0, tzinfo=IST)) is True
+    assert within_call_window(day, datetime(2026, 7, 22, 20, 0, tzinfo=IST)) is False
+    assert within_call_window(day, datetime(2026, 7, 22, 8, 0, tzinfo=IST)) is False
+
+    # Overnight window spanning midnight
+    night = LeadSetting(call_window_start="21:00", call_window_end="06:00")
+    assert within_call_window(night, datetime(2026, 7, 22, 23, 0, tzinfo=IST)) is True
+    assert within_call_window(night, datetime(2026, 7, 22, 3, 0, tzinfo=IST)) is True
+    assert within_call_window(night, datetime(2026, 7, 22, 12, 0, tzinfo=IST)) is False
+
+    # Full-day window (start == end)
+    allday = LeadSetting(call_window_start="00:00", call_window_end="00:00")
+    assert within_call_window(allday, datetime(2026, 7, 22, 3, 0, tzinfo=IST)) is True
+
+
+def test_settings_expose_new_ai_config(client, admin_headers):
+    body = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
+    for key in ("calling_mode", "max_call_duration_seconds", "call_window_start", "call_window_end"):
+        assert key in body
+    assert body["calling_mode"] in ("automatic", "manual")
+
+
+def test_settings_update_and_validation(client, admin_headers):
+    original = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
+
+    ok = client.put(f"{API}/pipeline/settings", json={
+        "calling_mode": "manual", "max_call_duration_seconds": 180,
+        "call_window_start": "10:30", "call_window_end": "18:00", "ai_batch_size": 5,
+    }, headers=admin_headers)
+    assert ok.status_code == 200
+    body = ok.json()
+    assert body["calling_mode"] == "manual"
+    assert body["max_call_duration_seconds"] == 180
+    assert body["call_window_start"] == "10:30"
+    assert body["ai_batch_size"] == 5
+
+    # Invalid values are rejected (422)
+    assert client.put(f"{API}/pipeline/settings", json={"calling_mode": "telepathy"}, headers=admin_headers).status_code == 422
+    assert client.put(f"{API}/pipeline/settings", json={"call_window_start": "25:00"}, headers=admin_headers).status_code == 422
+    assert client.put(f"{API}/pipeline/settings", json={"max_call_duration_seconds": 5}, headers=admin_headers).status_code == 422
+
+    # restore
+    client.put(f"{API}/pipeline/settings", json={
+        "calling_mode": original["calling_mode"],
+        "max_call_duration_seconds": original["max_call_duration_seconds"],
+        "call_window_start": original["call_window_start"],
+        "call_window_end": original["call_window_end"],
+        "ai_batch_size": original["ai_batch_size"],
+    }, headers=admin_headers)
+
+
+def test_settings_write_requires_admin(client, sales_headers):
+    resp = client.put(f"{API}/pipeline/settings", json={"calling_mode": "manual"}, headers=sales_headers)
+    assert resp.status_code == 403
+
+
+def test_run_cycle_reports_manual_mode_block(client, admin_headers):
+    original = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
+    client.put(f"{API}/pipeline/settings",
+               json={"ai_calling_enabled": True, "calling_mode": "manual"}, headers=admin_headers)
+    try:
+        res = client.post(f"{API}/pipeline/ai/run-cycle", headers=admin_headers).json()
+        assert res["processed"] == 0
+        assert res.get("blocked") == "manual_mode"
+    finally:
+        client.put(f"{API}/pipeline/settings", json={
+            "ai_calling_enabled": original["ai_calling_enabled"],
+            "calling_mode": original["calling_mode"],
+        }, headers=admin_headers)
+
+
+def test_manual_call_blocked_when_disabled(client, admin_headers, make_raw_lead):
+    original = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
+    lead = make_raw_lead(name="Manual Call Lead")
+    client.put(f"{API}/pipeline/settings", json={"ai_calling_enabled": False}, headers=admin_headers)
+    try:
+        res = client.post(f"{API}/pipeline/ai/manual-call", json={"ids": [lead["id"]]}, headers=admin_headers)
+        assert res.status_code == 200
+        body = res.json()
+        assert body["dispatched"] == 0
+        assert "disabled" in body["detail"].lower()
+    finally:
+        client.put(f"{API}/pipeline/settings",
+                   json={"ai_calling_enabled": original["ai_calling_enabled"]}, headers=admin_headers)

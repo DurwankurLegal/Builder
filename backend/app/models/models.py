@@ -203,10 +203,21 @@ class LeadSetting(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     dup_check_phone = Column(Boolean, default=True)
     dup_check_email = Column(Boolean, default=True)
-    ai_calling_enabled = Column(Boolean, default=True)
+    # AI calling is OFF by default: an admin must deliberately enable it
+    # before any lead is dialled (real provider or simulation).
+    ai_calling_enabled = Column(Boolean, default=False)
     ai_call_interval_seconds = Column(Integer, default=45)
     ai_retry_limit = Column(Integer, default=3)
-    ai_batch_size = Column(Integer, default=2)
+    ai_batch_size = Column(Integer, default=2)  # "Leads per Cycle" for automatic campaigns
+    # 'automatic': the worker initiates calls on its own cadence.
+    # 'manual': users select leads and start AI calling themselves.
+    calling_mode = Column(String(20), default="automatic")
+    # Hard cap per AI call before the provider terminates it (seconds)
+    max_call_duration_seconds = Column(Integer, default=300)
+    # Daily calling window in IST (HH:MM, 24h). Calls are only initiated
+    # inside this window, in both automatic and manual modes.
+    call_window_start = Column(String(5), default="09:00")
+    call_window_end = Column(String(5), default="19:00")
     # Voice provider: 'hirebuddha' (real outbound calls via the HireBuddha AI
     # voice agent) or 'simulation' (built-in demo dialer, no real calls).
     # Defaults to hirebuddha so new workspaces place real calls; the server-wide

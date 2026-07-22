@@ -16,7 +16,8 @@ from app.models.models import PipelineLead, ImportBatch, Tenant
 from app.schemas.schemas import (
     PipelineLeadCreate, PipelineLeadUpdate, PipelineLeadResponse, PipelineLeadPage,
     PipelineStats, BulkMoveRequest, BulkMoveResult, ImportBatchResponse,
-    LeadSettingResponse, LeadSettingUpdate, AICallResult
+    LeadSettingResponse, LeadSettingUpdate, AICallResult,
+    ManualCallRequest, ManualCallResult
 )
 from app.services import pipeline_service, ai_agent
 
@@ -685,7 +686,45 @@ async def ai_call_result(
 
 @router.post("/ai/run-cycle")
 async def ai_run_cycle(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
-    """Manually triggers one AI calling sweep for the active workspace (demo/testing helper)."""
+    """
+    Manually triggers one AUTOMATIC AI calling sweep for the active workspace.
+    Reports when the sweep is blocked (calling disabled, manual mode, or
+    outside the IST window) so the UI can explain the no-op.
+    """
     tenant_id = getattr(request.state, "tenant_id", "public")
+    settings_row = await pipeline_service.get_settings(db)
+    await db.commit()
+
+    if not settings_row.ai_calling_enabled:
+        return {"processed": 0, "blocked": "disabled",
+                "detail": "AI calling is disabled for this workspace."}
+    if (settings_row.calling_mode or "automatic") != "automatic":
+        return {"processed": 0, "blocked": "manual_mode",
+                "detail": "Workspace is in Manual mode - select leads and use Start AI Calling."}
+    if not pipeline_service.within_call_window(settings_row):
+        return {"processed": 0, "blocked": "window",
+                "detail": f"Outside the calling window ({settings_row.call_window_start}-{settings_row.call_window_end} IST)."}
+
     processed = await ai_agent.run_cycle_for_tenant(tenant_id, await tenant_name(request, db))
     return {"processed": processed}
+
+
+@router.post("/ai/manual-call", response_model=ManualCallResult)
+async def ai_manual_call(
+    payload: ManualCallRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user)
+):
+    """
+    Manual mode: start AI calling for the specific raw leads the user selected.
+    Enforces the same guardrails as the automatic worker (calling enabled +
+    inside the IST window).
+    """
+    tenant_id = getattr(request.state, "tenant_id", "public")
+    dispatched, skipped, notes = await ai_agent.manual_dispatch(
+        tenant_id, await tenant_name(request, db), payload.ids)
+    detail = f"Started AI calling for {dispatched} lead(s)."
+    if skipped:
+        detail += f" Skipped {skipped}: {'; '.join(notes[:10])}"
+    return {"dispatched": dispatched, "skipped": skipped, "detail": detail}

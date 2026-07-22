@@ -100,8 +100,9 @@ def simulate_call(lead: PipelineLead) -> dict:
 
 async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
     """
-    Runs one AI calling sweep inside a tenant schema. Returns number of leads processed.
-    Each lead is committed atomically with its history + audit rows.
+    Runs one AUTOMATIC AI calling sweep inside a tenant schema. Returns number
+    of leads processed. Each lead is committed atomically with its history +
+    audit rows. Respects the workspace's calling mode and IST calling window.
     """
     # Hard-validate before interpolating into SET search_path; a tenant row
     # with a malformed id (or a missing schema) is skipped, never executed.
@@ -120,6 +121,17 @@ async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
         settings_row = await pipeline_service.get_settings(session)
 
         if not settings_row.ai_calling_enabled:
+            await session.commit()
+            return 0
+
+        # Only AUTOMATIC mode is driven by the background worker; manual mode
+        # dials only the leads a user explicitly selects.
+        if (getattr(settings_row, "calling_mode", "automatic") or "automatic") != "automatic":
+            await session.commit()
+            return 0
+
+        # Honour the daily IST calling window.
+        if not pipeline_service.within_call_window(settings_row):
             await session.commit()
             return 0
 
@@ -227,6 +239,75 @@ async def _run_hirebuddha_cycle(session, tenant_name: str, settings_row) -> int:
         processed += 1
 
     return processed
+
+
+async def manual_dispatch(tenant_id: str, tenant_name: str, ids: list[str]) -> tuple[int, int, list[str]]:
+    """
+    Manual mode: dial only the specific leads a user selected. Enforces the
+    same guardrails as the automatic worker - AI calling must be enabled and
+    the current IST time must be inside the calling window. Returns
+    (dispatched, skipped, notes).
+    """
+    try:
+        schema = resolve_schema(tenant_id)
+    except InvalidTenantError:
+        return 0, len(ids), ["invalid workspace"]
+
+    dispatched, skipped, notes = 0, 0, []
+    async with async_session_maker() as session:
+        if not await schema_exists(session, schema):
+            return 0, len(ids), ["workspace schema missing"]
+        await session.execute(text(f"SET search_path TO {schema}, public"))
+        settings_row = await pipeline_service.get_settings(session)
+
+        if not settings_row.ai_calling_enabled:
+            await session.commit()
+            return 0, len(ids), ["AI calling is disabled for this workspace - enable it in Configure"]
+        if not pipeline_service.within_call_window(settings_row):
+            await session.commit()
+            return 0, len(ids), [
+                f"outside the calling window ({settings_row.call_window_start}-{settings_row.call_window_end} IST)"]
+
+        provider = getattr(settings_row, "ai_provider", None) or "simulation"
+        for lead_id in ids:
+            result = await session.execute(select(PipelineLead).where(PipelineLead.id == lead_id))
+            lead = result.scalars().first()
+            if not lead or lead.stage != "raw":
+                skipped += 1
+                notes.append(f"{lead_id}: not a raw lead")
+                continue
+            if lead.status == hirebuddha.STATUS_IN_PROGRESS:
+                skipped += 1
+                notes.append(f"{lead_id}: call already in progress")
+                continue
+            if (lead.call_attempts or 0) >= settings_row.ai_retry_limit:
+                skipped += 1
+                notes.append(f"{lead_id}: retry limit reached")
+                continue
+
+            if provider == "hirebuddha":
+                if not hirebuddha.is_configured(settings_row):
+                    skipped += 1
+                    notes.append(f"{lead_id}: HireBuddha integration is off/misconfigured")
+                    continue
+                if await hirebuddha.dispatch_lead(session, lead, settings_row, tenant_name):
+                    dispatched += 1
+                else:
+                    skipped += 1
+                    notes.append(f"{lead_id}: dispatch failed (see AI logs)")
+            else:
+                await pipeline_service.write_audit(
+                    session, tenant_name, AGENT_NAME,
+                    f"Manual AI call initiated for {lead.id} ({lead.name}).")
+                if random.random() < 0.72:
+                    pipeline_service.apply_call_success(lead, simulate_call(lead))
+                else:
+                    pipeline_service.apply_call_failure(
+                        lead, settings_row.ai_retry_limit, random.choice(FAILURE_REASONS))
+                dispatched += 1
+
+        await session.commit()
+    return dispatched, skipped, notes
 
 
 async def worker_loop():

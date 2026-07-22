@@ -109,13 +109,17 @@ SCHEMA_TABLES_DDL = [
         id SERIAL PRIMARY KEY,
         dup_check_phone BOOLEAN DEFAULT TRUE,
         dup_check_email BOOLEAN DEFAULT TRUE,
-        ai_calling_enabled BOOLEAN DEFAULT TRUE,
+        ai_calling_enabled BOOLEAN DEFAULT FALSE,
         ai_call_interval_seconds INTEGER DEFAULT 45,
         ai_retry_limit INTEGER DEFAULT 3,
         ai_batch_size INTEGER DEFAULT 2,
         ai_provider VARCHAR(50) DEFAULT 'hirebuddha',
         hb_client_id VARCHAR(100) NULL,
-        hb_entity_id VARCHAR(100) NULL
+        hb_entity_id VARCHAR(100) NULL,
+        calling_mode VARCHAR(20) DEFAULT 'automatic',
+        max_call_duration_seconds INTEGER DEFAULT 300,
+        call_window_start VARCHAR(5) DEFAULT '09:00',
+        call_window_end VARCHAR(5) DEFAULT '19:00'
     )""",
     """CREATE TABLE IF NOT EXISTS {schema}.integration_logs (
         id SERIAL PRIMARY KEY,
@@ -200,6 +204,17 @@ QA2_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.lead_settings ALTER COLUMN ai_provider SET DEFAULT 'hirebuddha'",
 ]
 
+# AI calling campaign controls: mode, per-call duration cap, IST calling
+# window, and the safer disabled-by-default for NEW workspaces (existing
+# workspaces keep their current ai_calling_enabled value).
+AI_CONFIG_MIGRATIONS = [
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS calling_mode VARCHAR(20) DEFAULT 'automatic'",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS max_call_duration_seconds INTEGER DEFAULT 300",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS call_window_start VARCHAR(5) DEFAULT '09:00'",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS call_window_end VARCHAR(5) DEFAULT '19:00'",
+    "ALTER TABLE {schema}.lead_settings ALTER COLUMN ai_calling_enabled SET DEFAULT FALSE",
+]
+
 # The single workspace whose admin is the system-wide Super Admin. Admins of
 # every other workspace are Tenant Admins, confined to their own workspace.
 SUPER_ADMIN_TENANT = "tenant-1"
@@ -255,7 +270,7 @@ async def seed_all():
         await conn.run_sync(Base.metadata.create_all)
         # public.users predates the account-security columns when the table
         # already existed (create_all never alters an existing table).
-        for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS:
+        for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS + AI_CONFIG_MIGRATIONS:
             await conn.execute(text(alter.format(schema="public")))
         print("Spawned public schema tables.")
 
@@ -307,7 +322,7 @@ async def seed_all():
             for ddl in SCHEMA_TABLES_DDL:
                 await conn.execute(text(ddl.format(schema=schema)))
             # Idempotent migrations for schemas created before these columns existed
-            for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS:
+            for alter in USER_COLUMN_MIGRATIONS + HIREBUDDHA_COLUMN_MIGRATIONS + QA2_COLUMN_MIGRATIONS + AI_CONFIG_MIGRATIONS:
                 await conn.execute(text(alter.format(schema=schema)))
             print(f"Spawned workspace tables for schema: {schema}")
             

@@ -160,6 +160,10 @@ async def dispatch_lead(db: AsyncSession, lead: PipelineLead, settings_row: Lead
         return False
 
     payload = build_lead_payload(lead)
+    # Hard cap on how long HireBuddha lets the call run before terminating it.
+    max_dur = getattr(settings_row, "max_call_duration_seconds", None)
+    if max_dur:
+        payload["properties"]["max_call_duration_seconds"] = int(max_dur)
     last_error: str | None = None
 
     for attempt in range(1, settings.HIREBUDDHA_HTTP_RETRIES + 1):

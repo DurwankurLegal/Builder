@@ -5,10 +5,37 @@ REST API router and the background AI calling worker so every pathway
 records identical history and audit entries.
 """
 import re
-from datetime import datetime
+from datetime import datetime, time, timedelta, timezone
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.models import PipelineLead, Lead, Customer, AuditLog, LeadSetting
+
+# India Standard Time (UTC+5:30) - the calling window is defined in IST.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
+def _parse_hhmm(value: str, fallback: time) -> time:
+    try:
+        h, m = value.split(":")
+        return time(int(h), int(m))
+    except (ValueError, AttributeError):
+        return fallback
+
+
+def within_call_window(settings_row: LeadSetting, now_ist: datetime | None = None) -> bool:
+    """
+    True when the current IST time falls inside the workspace's daily calling
+    window. Supports overnight windows (start > end). An all-day window is
+    expressed as 00:00-00:00 (or start == end) and always returns True.
+    """
+    start = _parse_hhmm(getattr(settings_row, "call_window_start", None) or "09:00", time(9, 0))
+    end = _parse_hhmm(getattr(settings_row, "call_window_end", None) or "19:00", time(19, 0))
+    if start == end:
+        return True  # full-day window
+    now = (now_ist or datetime.now(IST)).time()
+    if start < end:
+        return start <= now < end
+    return now >= start or now < end  # window spans midnight
 
 # Stage transition matrix: current stage -> allowed targets
 ALLOWED_TRANSITIONS = {

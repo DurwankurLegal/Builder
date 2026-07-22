@@ -237,6 +237,8 @@ class ImportBatchResponse(BaseModel):
     class Config:
         from_attributes = True
 
+_HHMM = r"^([01]\d|2[0-3]):[0-5]\d$"  # 24h HH:MM
+
 class LeadSettingResponse(BaseModel):
     dup_check_phone: bool
     dup_check_email: bool
@@ -247,6 +249,10 @@ class LeadSettingResponse(BaseModel):
     ai_provider: str = "hirebuddha"
     hb_client_id: Optional[str] = None
     hb_entity_id: Optional[str] = None
+    calling_mode: str = "automatic"
+    max_call_duration_seconds: int = 300
+    call_window_start: str = "09:00"
+    call_window_end: str = "19:00"
 
     class Config:
         from_attributes = True
@@ -257,10 +263,23 @@ class LeadSettingUpdate(BaseModel):
     ai_calling_enabled: Optional[bool] = None
     ai_call_interval_seconds: Optional[int] = None
     ai_retry_limit: Optional[int] = None
-    ai_batch_size: Optional[int] = None
+    ai_batch_size: Optional[int] = Field(default=None, ge=1, le=100)  # Leads per Cycle
     ai_provider: Optional[str] = Field(default=None, pattern="^(simulation|hirebuddha)$")
     hb_client_id: Optional[str] = None
     hb_entity_id: Optional[str] = None
+    calling_mode: Optional[str] = Field(default=None, pattern="^(automatic|manual)$")
+    max_call_duration_seconds: Optional[int] = Field(default=None, ge=30, le=3600)
+    call_window_start: Optional[str] = Field(default=None, pattern=_HHMM)
+    call_window_end: Optional[str] = Field(default=None, pattern=_HHMM)
+
+class ManualCallRequest(BaseModel):
+    """Manual-mode: the specific pipeline lead ids to dial now."""
+    ids: List[str] = Field(min_length=1)
+
+class ManualCallResult(BaseModel):
+    dispatched: int
+    skipped: int
+    detail: str
 
 class AICallResult(BaseModel):
     lead_id: str
