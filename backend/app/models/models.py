@@ -207,10 +207,11 @@ class LeadSetting(Base):
     ai_call_interval_seconds = Column(Integer, default=45)
     ai_retry_limit = Column(Integer, default=3)
     ai_batch_size = Column(Integer, default=2)
-    # Voice provider: 'simulation' (built-in demo dialer) or 'hirebuddha'.
-    # Defaults to simulation so existing workspaces never dial real numbers
-    # until an admin deliberately switches the provider on.
-    ai_provider = Column(String(50), default="simulation")
+    # Voice provider: 'hirebuddha' (real outbound calls via the HireBuddha AI
+    # voice agent) or 'simulation' (built-in demo dialer, no real calls).
+    # Defaults to hirebuddha so new workspaces place real calls; the server-wide
+    # HIREBUDDHA_ENABLED flag is the master kill-switch (off in dev/test).
+    ai_provider = Column(String(50), default="hirebuddha")
     # Optional per-workspace HireBuddha overrides (fall back to global config)
     hb_client_id = Column(String(100), nullable=True)
     hb_entity_id = Column(String(100), nullable=True)

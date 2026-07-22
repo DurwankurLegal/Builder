@@ -113,7 +113,7 @@ SCHEMA_TABLES_DDL = [
         ai_call_interval_seconds INTEGER DEFAULT 45,
         ai_retry_limit INTEGER DEFAULT 3,
         ai_batch_size INTEGER DEFAULT 2,
-        ai_provider VARCHAR(50) DEFAULT 'simulation',
+        ai_provider VARCHAR(50) DEFAULT 'hirebuddha',
         hb_client_id VARCHAR(100) NULL,
         hb_entity_id VARCHAR(100) NULL
     )""",
@@ -185,7 +185,7 @@ HIREBUDDHA_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS dispatch_correlation_id VARCHAR(100) NULL",
     "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS dispatched_at VARCHAR(50) NULL",
     "ALTER TABLE {schema}.pipeline_leads ADD COLUMN IF NOT EXISTS callback_received_at VARCHAR(50) NULL",
-    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT 'simulation'",
+    "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS ai_provider VARCHAR(50) DEFAULT 'hirebuddha'",
     "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_client_id VARCHAR(100) NULL",
     "ALTER TABLE {schema}.lead_settings ADD COLUMN IF NOT EXISTS hb_entity_id VARCHAR(100) NULL",
 ]
@@ -193,6 +193,11 @@ HIREBUDDHA_COLUMN_MIGRATIONS = [
 # QA cycle 2 additive migrations (bookings date column for monthly reports)
 QA2_COLUMN_MIGRATIONS = [
     "ALTER TABLE {schema}.bookings ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+    # HireBuddha is now the default voice provider for NEW workspaces. This only
+    # changes the column default; existing workspaces keep whatever they have
+    # set (flip them intentionally in Raw Leads -> Configure, or via the one-off
+    # UPDATE documented in docs/HIREBUDDHA_INTEGRATION.md).
+    "ALTER TABLE {schema}.lead_settings ALTER COLUMN ai_provider SET DEFAULT 'hirebuddha'",
 ]
 
 # The single workspace whose admin is the system-wide Super Admin. Admins of

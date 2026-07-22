@@ -222,6 +222,16 @@ def test_report_summary_shape_and_consistency(client, admin_headers):
     assert len(body["monthly_sales"]) == 6
 
 
+def test_hirebuddha_is_default_provider():
+    """New workspaces default to the HireBuddha voice provider (real calls),
+    not the simulator. Verified at the schema/migration layer so it holds for
+    freshly provisioned tenants regardless of persisted dev data."""
+    from app.db.seed import SCHEMA_TABLES_DDL, QA2_COLUMN_MIGRATIONS
+    ddl = " ".join(SCHEMA_TABLES_DDL)
+    assert "ai_provider VARCHAR(50) DEFAULT 'hirebuddha'" in ddl
+    assert any("ALTER COLUMN ai_provider SET DEFAULT 'hirebuddha'" in m for m in QA2_COLUMN_MIGRATIONS)
+
+
 def test_inr_parser():
     from app.api.v1.reports import parse_inr
     assert parse_inr("₹85 Lakhs") == 8_500_000

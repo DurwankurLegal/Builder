@@ -57,9 +57,22 @@ the per-workspace `integration_logs` table and mirrored into the audit trail.
 
 ### Per-workspace settings (Raw Leads → Configure, admin only)
 
-- **Voice provider** — `Built-in Simulation` (default; no real calls) or
-  `HireBuddha AI Voice Agent`. **Switching to HireBuddha starts real outbound
-  phone calls to every pending Raw Lead in that workspace.**
+- **Voice provider** — `HireBuddha AI Voice Agent` (**the default** — real
+  outbound calls) or `Built-in Simulation` (demo, no real calls). Because
+  HireBuddha is the default, **every new Raw Lead in a workspace is
+  auto-dialled** once `HIREBUDDHA_ENABLED=1` on the server. Switch a workspace
+  to Simulation only for demos/testing.
+
+> **Enabling HireBuddha on already-deployed workspaces.** Changing the default
+> only affects *new* workspaces. Workspaces that were provisioned earlier keep
+> whatever `ai_provider` they already had. Flip them either in Raw Leads →
+> Configure per workspace, or across all workspaces at once with a one-off SQL
+> update per schema, e.g. for `tenant-1`:
+> ```bash
+> docker compose -f docker-compose.prod.yml exec postgres \
+>   psql -U buildercrm -d buildercrm \
+>   -c "UPDATE tenant_1.lead_settings SET ai_provider='hirebuddha';"
+> ```
 - **Company ID / Agent ID overrides** — for workspaces mapped to a different
   HireBuddha company or agent; blank uses the global defaults above.
 - The existing cadence controls (interval, batch size, retry limit) apply to

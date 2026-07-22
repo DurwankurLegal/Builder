@@ -480,12 +480,13 @@ export const RawLeads = () => {
               </label>
               <div className="form-group">
                 <label className="form-label">Voice provider</label>
-                <select name="aiProvider" defaultValue={settings.ai_provider || 'simulation'} className="form-control" style={{ width: '100%' }}>
+                <select name="aiProvider" defaultValue={settings.ai_provider || 'hirebuddha'} className="form-control" style={{ width: '100%' }}>
+                  <option value="hirebuddha">HireBuddha AI Voice Agent (real outbound calls) — default</option>
                   <option value="simulation">Built-in Simulation (demo, no real calls)</option>
-                  <option value="hirebuddha">HireBuddha AI Voice Agent (real outbound calls)</option>
                 </select>
                 <p style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  HireBuddha places real phone calls to your leads and posts the results back into this CRM.
+                  HireBuddha (default) places real phone calls to your leads and posts the results back into this CRM.
+                  Switch to Simulation only for demos/testing — it fabricates outcomes and never dials.
                 </p>
               </div>
               <div className="form-row" style={{ display: 'flex', gap: 'var(--spacing-4)' }}>

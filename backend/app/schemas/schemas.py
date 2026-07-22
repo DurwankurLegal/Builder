@@ -244,7 +244,7 @@ class LeadSettingResponse(BaseModel):
     ai_call_interval_seconds: int
     ai_retry_limit: int
     ai_batch_size: int
-    ai_provider: str = "simulation"
+    ai_provider: str = "hirebuddha"
     hb_client_id: Optional[str] = None
     hb_entity_id: Optional[str] = None
 

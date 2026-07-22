@@ -193,6 +193,10 @@ async def dispatch_lead(db: AsyncSession, lead: PipelineLead, settings_row: Lead
                     db, tenant_name, DISPATCH_ACTOR,
                     f"Lead {lead.id} ({lead.name}) dispatched to HireBuddha for AI calling "
                     f"[correlation {lead.dispatch_correlation_id or 'n/a'}].")
+                logger.info(
+                    f"HireBuddha dispatch OK: {lead.id} ({lead.name}, {phone_e164}) "
+                    f"accepted by {tenant_name} [HTTP {response.status_code}, "
+                    f"correlation {lead.dispatch_correlation_id or 'n/a'}].")
                 return True
 
             # Non-2xx: only retry server-side errors; client errors won't heal

@@ -177,13 +177,9 @@ async def _run_hirebuddha_cycle(session, tenant_name: str, settings_row) -> int:
     One HireBuddha sweep: re-queues leads whose callback never arrived, then
     dispatches the next batch of pending raw leads to the voice platform.
     Leads sit in "AI Call In Progress" until the CRM Update API callback
-    lands, so they are never double-dialled. The caller commits.
+    lands, so they are never double-dialled. Every step is logged (loguru +
+    per-lead integration_logs + audit trail). The caller commits.
     """
-    if not hirebuddha.is_configured(settings_row):
-        logger.warning(f"HireBuddha provider selected for {tenant_name} but the "
-                       "integration is disabled or missing a client id - skipping sweep.")
-        return 0
-
     processed = 0
 
     # 1. Recover leads whose call result never came back
@@ -192,14 +188,18 @@ async def _run_hirebuddha_cycle(session, tenant_name: str, settings_row) -> int:
         .where(PipelineLead.stage == "raw")
         .where(PipelineLead.status == hirebuddha.STATUS_IN_PROGRESS)
     )
+    requeued = 0
     for lead in result.scalars().all():
         if hirebuddha.requeue_if_callback_overdue(lead, settings_row.ai_retry_limit):
+            requeued += 1
             await pipeline_service.write_audit(
                 session, tenant_name, hirebuddha.DISPATCH_ACTOR,
                 f"Lead {lead.id} re-queued: no HireBuddha callback within "
                 f"the configured timeout.", status="Failed")
+    if requeued:
+        logger.info(f"HireBuddha [{tenant_name}]: re-queued {requeued} lead(s) with no callback.")
 
-    # 2. Dispatch the next batch of pending leads
+    # 2. Find the next batch of pending leads to dispatch
     result = await session.execute(
         select(PipelineLead)
         .where(PipelineLead.stage == "raw")
@@ -208,7 +208,21 @@ async def _run_hirebuddha_cycle(session, tenant_name: str, settings_row) -> int:
         .order_by(PipelineLead.created_at)
         .limit(settings_row.ai_batch_size)
     )
-    for lead in result.scalars().all():
+    pending = result.scalars().all()
+    if not pending:
+        return 0
+
+    # Only meaningful when there is actually work to dispatch: surface a clear
+    # reason if the integration can't run so a "why didn't my lead get called?"
+    # is answerable from the logs.
+    if not hirebuddha.is_configured(settings_row):
+        logger.warning(
+            f"HireBuddha [{tenant_name}]: {len(pending)} lead(s) awaiting dispatch but the "
+            f"integration is OFF (HIREBUDDHA_ENABLED) or missing a client id - not dispatched.")
+        return 0
+
+    logger.info(f"HireBuddha [{tenant_name}]: dispatching {len(pending)} pending lead(s) to the voice agent.")
+    for lead in pending:
         await hirebuddha.dispatch_lead(session, lead, settings_row, tenant_name)
         processed += 1
 

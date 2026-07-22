@@ -7,8 +7,9 @@ mapping — pure logic, no network or database.
 HTTP layer: exercises the CRM Update API (callback endpoint), its
 authentication, idempotency, and the integration log/audit surfaces against
 the live application. No test ever contacts the real HireBuddha platform:
-the workspace provider stays on 'simulation' (and the worker is paused by
-conftest), so only the inbound callback path runs.
+the dev/test stack runs with HIREBUDDHA_ENABLED=0 (outbound kill-switch off)
+and the worker is paused for the tenant under test by conftest, so only the
+inbound callback path runs.
 """
 import os
 import pytest

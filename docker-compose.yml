@@ -42,6 +42,10 @@ services:
       - SECRET_KEY=PRODUCTION_JWT_SECRET_PASSED_VIA_ENVIRONMENT_VARIABLES_987654321
       # HireBuddha callback auth (dev-only token; production generates its own)
       - HIREBUDDHA_CALLBACK_TOKEN=dev-hirebuddha-callback-token
+      # Master kill-switch OFF in dev/test so the worker never places real
+      # outbound calls, even though the workspace default is now 'hirebuddha'.
+      # Production sets this to 1 in deploy/.env.
+      - HIREBUDDHA_ENABLED=0
     ports:
       - "8000:8000"
     depends_on:
