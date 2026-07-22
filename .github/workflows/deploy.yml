@@ -1,0 +1,42 @@
+name: Deploy to production
+
+# Push-to-deploy: every push to main SSHes into the server and runs the
+# redeploy script, which rebuilds ONLY the buildercrm stack (cctv/dsa are
+# never touched). Also runnable on demand from the Actions tab.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never let two deploys overlap on the server.
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      # Until the DEPLOY_* secrets are configured, skip cleanly (green run,
+      # no failed builds) instead of erroring.
+      - name: Check deploy is configured
+        id: cfg
+        run: |
+          if [ -z "${{ secrets.DEPLOY_HOST }}" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Deploy secrets not set yet - skipping. Add DEPLOY_HOST/PORT/USER/SSH_KEY to enable auto-deploy."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Redeploy over SSH
+        if: steps.cfg.outputs.configured == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          command_timeout: 20m
+          script: bash /opt/buildercrm/deploy/redeploy.sh
