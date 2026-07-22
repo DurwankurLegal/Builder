@@ -4,12 +4,12 @@ import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
 import {
   Plus, Upload, History, XCircle, PhoneForwarded, Star, UserCheck,
-  Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet, ScrollText, PhoneOutgoing
+  Trash2, Bot, Settings2, Zap, Download, FileSpreadsheet, ScrollText, PhoneOutgoing, Edit
 } from 'lucide-react';
 import {
   usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
   SOURCES, PROJECTS, SortableTh, PaginationBar, ExportButtons,
-  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
+  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal, EditLeadModal
 } from '../components/pipeline/pipelineCommon';
 
 const RAW_STATUSES = [
@@ -38,6 +38,7 @@ export const RawLeads = () => {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showLogsModal, setShowLogsModal] = useState(false);
   const [historyLead, setHistoryLead] = useState<PipelineLead | null>(null);
+  const [editLead, setEditLead] = useState<PipelineLead | null>(null);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -318,6 +319,7 @@ export const RawLeads = () => {
                   <td>{statusBadge(lead)}</td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px' }}>
+                      <button className="btn btn-ghost" title="Edit lead" style={{ padding: '4px' }} onClick={() => setEditLead(lead)}><Edit size={14} /></button>
                       {isAdmin && usingHireBuddha && lead.status !== 'AI Call In Progress' && (
                         <button className="btn btn-ghost" title="Send to HireBuddha AI agent now" style={{ padding: '4px', color: 'var(--brand-primary)' }}
                           disabled={dispatchMutation.isPending}
@@ -329,6 +331,12 @@ export const RawLeads = () => {
                       <button className="btn btn-ghost" title="Move to Qualified Leads" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'qualified' })}><Star size={14} /></button>
                       <button className="btn btn-ghost" title="Convert to Active Customer" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'customer' })}><UserCheck size={14} /></button>
                       <button className="btn btn-ghost" title="Reject Lead" style={{ padding: '4px', color: 'var(--color-danger)' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'rejected' })}><XCircle size={14} /></button>
+                      {isAdmin && (
+                        <button className="btn btn-ghost" title="Delete lead permanently" style={{ padding: '4px', color: 'var(--color-danger)' }}
+                          onClick={() => { if (window.confirm(`Delete lead ${lead.id} (${lead.name})? This cannot be undone.`)) deleteMutation.mutate([lead.id]); }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -574,6 +582,7 @@ export const RawLeads = () => {
         </dialog>
       )}
 
+      {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} />}
       {historyLead && <LeadHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
     </div>
   );

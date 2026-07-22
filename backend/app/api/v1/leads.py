@@ -3,12 +3,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_
 from typing import List, Optional
 from datetime import datetime
-from app.api.deps import get_db, get_current_user
+from app.api.deps import get_db, get_current_user, check_roles
 from app.models.models import Lead, Customer, Tenant
 from app.schemas.schemas import LeadCreate, LeadUpdate, LeadResponse
 from app.services.pipeline_service import next_suffix_id, normalize_phone, write_audit
 
 router = APIRouter()
+
+# Deleting a leads-database record is an admin capability
+ADMIN_ROLES = ["Super Admin", "Tenant Admin"]
 
 
 async def _tenant_label(request: Request, db: AsyncSession) -> str:
@@ -191,3 +194,22 @@ async def convert_lead(lead_id: str, request: Request, db: AsyncSession = Depend
                       f"Lead {lead.id} ({lead.name}) converted to customer {cust_id}.")
     await db.commit()
     return lead
+
+
+@router.delete("/{lead_id}")
+async def delete_lead(lead_id: str, request: Request, db: AsyncSession = Depends(get_db),
+                      user = Depends(check_roles(ADMIN_ROLES))):
+    """
+    Permanently removes a lead from the leads database. Admin-only and
+    audit-logged. (Prefer "Mark Lost" to preserve history when a deal simply
+    falls through; delete is for erroneous or duplicate records.)
+    """
+    result = await db.execute(select(Lead).where(Lead.id == lead_id))
+    lead = result.scalars().first()
+    if not lead:
+        raise HTTPException(status_code=404, detail="Lead not found")
+    await db.delete(lead)
+    await write_audit(db, await _tenant_label(request, db), user.username,
+                      f"Lead {lead_id} ({lead.name}) deleted from the leads database.")
+    await db.commit()
+    return {"deleted": lead_id}

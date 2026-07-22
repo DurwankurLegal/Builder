@@ -2,12 +2,12 @@ import { useEffect, useState } from 'react';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
 import {
-  XCircle, Star, UserCheck, Database, Play, Download, Volume2, Plus
+  XCircle, Star, UserCheck, Database, Play, Download, Volume2, Plus, Edit, Trash2
 } from 'lucide-react';
 import {
-  usePipelineLeads, useBulkMove, useIsAdmin, PipelineLead,
+  usePipelineLeads, useBulkMove, useDeletePipelineLead, useIsAdmin, PipelineLead,
   SOURCES, PROJECTS, SortableTh, PaginationBar, ExportButtons,
-  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal
+  PipelineFilterBar, BulkActionBar, LeadHistoryModal, AddLeadModal, EditLeadModal
 } from '../components/pipeline/pipelineCommon';
 
 /**
@@ -120,7 +120,9 @@ export const CalledLeads = () => {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [playingLead, setPlayingLead] = useState<PipelineLead | null>(null);
   const [historyLead, setHistoryLead] = useState<PipelineLead | null>(null);
+  const [editLead, setEditLead] = useState<PipelineLead | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
+  const isAdmin = useIsAdmin();
 
   const { data, isLoading } = usePipelineLeads({
     stage: 'called', search, interest: interestFilter, source: sourceFilter,
@@ -128,6 +130,7 @@ export const CalledLeads = () => {
   });
 
   const bulkMove = useBulkMove(() => setSelected(new Set()));
+  const deleteMutation = useDeletePipelineLead(() => setSelected(new Set()));
 
   const items = data?.items || [];
   const allChecked = items.length > 0 && items.every(l => selected.has(l.id));
@@ -192,6 +195,7 @@ export const CalledLeads = () => {
           { label: 'Qualify', icon: <Star size={14} />, onClick: () => bulkMove.mutate({ ids: [...selected], target: 'qualified' }) },
           { label: 'Convert to Customer', icon: <UserCheck size={14} />, className: 'btn-success', onClick: () => bulkMove.mutate({ ids: [...selected], target: 'customer' }) },
           { label: 'Reject', icon: <XCircle size={14} />, className: 'btn-secondary', onClick: () => bulkMove.mutate({ ids: [...selected], target: 'rejected' }) },
+          ...(isAdmin ? [{ label: 'Delete', icon: <Trash2 size={14} />, className: 'btn-secondary', onClick: () => { if (window.confirm(`Delete ${selected.size} selected lead(s)? This cannot be undone.`)) deleteMutation.mutate([...selected]); } }] : []),
         ]}
       />
 
@@ -269,10 +273,17 @@ export const CalledLeads = () => {
                   </td>
                   <td>
                     <div style={{ display: 'flex', gap: '4px' }}>
+                      <button className="btn btn-ghost" title="Edit lead" style={{ padding: '4px' }} onClick={() => setEditLead(lead)}><Edit size={14} /></button>
                       <button className="btn btn-ghost" title="Move to Contacted (Leads Database)" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'database' })}><Database size={14} /></button>
                       <button className="btn btn-ghost" title="Move to Qualified Leads" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'qualified' })}><Star size={14} /></button>
                       <button className="btn btn-ghost" title="Convert to Active Customer" style={{ padding: '4px' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'customer' })}><UserCheck size={14} /></button>
                       <button className="btn btn-ghost" title="Reject Lead" style={{ padding: '4px', color: 'var(--color-danger)' }} onClick={() => bulkMove.mutate({ ids: [lead.id], target: 'rejected' })}><XCircle size={14} /></button>
+                      {isAdmin && (
+                        <button className="btn btn-ghost" title="Delete lead permanently" style={{ padding: '4px', color: 'var(--color-danger)' }}
+                          onClick={() => { if (window.confirm(`Delete lead ${lead.id} (${lead.name})? This cannot be undone.`)) deleteMutation.mutate([lead.id]); }}>
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -285,6 +296,7 @@ export const CalledLeads = () => {
       <PaginationBar data={data} page={page} setPage={setPage} noun="called leads" />
 
       {showAddModal && <AddLeadModal stage="called" onClose={() => setShowAddModal(false)} />}
+      {editLead && <EditLeadModal lead={editLead} onClose={() => setEditLead(null)} />}
       {playingLead && <RecordingModal lead={playingLead} onClose={() => setPlayingLead(null)} />}
       {historyLead && <LeadHistoryModal lead={historyLead} onClose={() => setHistoryLead(null)} />}
     </div>

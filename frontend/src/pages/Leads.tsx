@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { apiClient } from '../config/api';
 import { useUIStore } from '../store/uiStore';
+import { useAuthStore } from '../store/authStore';
 import { exportToCsv } from '../utils/exportCsv';
 import {
   Plus, Search, Download, Trash2, ArrowLeft, XCircle, Clock,
@@ -26,7 +27,9 @@ type LeadFormValues = z.infer<typeof leadSchema>;
 export const Leads = () => {
   const queryClient = useQueryClient();
   const { showToast } = useUIStore();
-  
+  const { userInfo } = useAuthStore();
+  const isAdmin = ['Super Admin', 'Tenant Admin'].includes(userInfo?.role || '');
+
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showLostModal, setShowLostModal] = useState(false);
@@ -104,7 +107,18 @@ export const Leads = () => {
       queryClient.invalidateQueries({ queryKey: ['lead', activeLeadId] });
       showToast('Lead converted to active customer context!', 'success');
       setActiveLeadId(null);
-    }
+    },
+    onError: (err: any) => showToast(err?.response?.data?.detail || 'Conversion failed.', 'danger')
+  });
+
+  const deleteLeadMutation = useMutation({
+    mutationFn: async (id: string) => (await apiClient.delete(`/leads/${id}`)).data,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      showToast('Lead deleted from the database.', 'success');
+      setActiveLeadId(null);
+    },
+    onError: (err: any) => showToast(err?.response?.data?.detail || 'Delete failed.', 'danger')
   });
 
   const { register, handleSubmit, formState: { errors } } = useForm<LeadFormValues>({
@@ -220,6 +234,12 @@ export const Leads = () => {
                   <UserCheck size={16} style={{ marginRight: '6px' }} /> Convert to Customer
                 </button>
               </>
+            )}
+            {isAdmin && (
+              <button className="btn btn-outline" style={{ color: 'var(--color-danger)' }}
+                onClick={() => { if (window.confirm(`Permanently delete lead ${activeLead.id} (${activeLead.name})? This cannot be undone.`)) deleteLeadMutation.mutate(activeLead.id); }}>
+                <Trash2 size={16} style={{ marginRight: '6px' }} /> Delete
+              </button>
             )}
           </div>
         </div>

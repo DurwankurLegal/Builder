@@ -292,3 +292,58 @@ def test_executives_endpoint_open_to_all_roles(client, sales_headers):
     assert resp.status_code == 200
     names = resp.json()
     assert "admin" in names and "priya" in names
+
+
+# ============================================================
+# Lead edit / delete (Raw / Called / Qualified pipeline + Leads Database)
+# ============================================================
+
+def test_pipeline_lead_edit(client, admin_headers, make_raw_lead):
+    lead = make_raw_lead(name="Editable Lead", budget="₹80 Lakhs")
+    resp = client.put(f"{API}/pipeline/leads/{lead['id']}",
+                      json={"name": "Edited Name", "budget": "₹1.1 Crore", "project": "Green Meadows"},
+                      headers=admin_headers)
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["name"] == "Edited Name"
+    assert body["budget"] == "₹1.1 Crore"
+    assert body["project"] == "Green Meadows"
+    # the edit is recorded in the lead's history
+    detail = client.get(f"{API}/pipeline/leads/{lead['id']}", headers=admin_headers).json()
+    assert any("updated" in h.get("action", "").lower() for h in detail["history"])
+
+
+def test_pipeline_lead_delete_admin_only(client, admin_headers, sales_headers, make_raw_lead):
+    lead = make_raw_lead(name="Deletable Lead")
+    # Sales Executive cannot delete
+    denied = client.delete(f"{API}/pipeline/leads/{lead['id']}", headers=sales_headers)
+    assert denied.status_code == 403
+    # Admin can
+    ok = client.delete(f"{API}/pipeline/leads/{lead['id']}", headers=admin_headers)
+    assert ok.status_code == 200
+    assert client.get(f"{API}/pipeline/leads/{lead['id']}", headers=admin_headers).status_code == 404
+
+
+def test_leads_database_delete_admin_only_and_audited(client, admin_headers, sales_headers):
+    created = client.post(f"{API}/leads", json={
+        "name": "DB Delete Lead", "email": rand_email(), "phone": rand_phone(),
+        "project": "Sunrise Heights", "budget": "₹90 Lakhs",
+        "source": "Referral", "executive": "priya"
+    }, headers=admin_headers).json()
+    lead_id = created["id"]
+
+    # Sales Executive is denied
+    denied = client.delete(f"{API}/leads/{lead_id}", headers=sales_headers)
+    assert denied.status_code == 403
+
+    # Admin deletes; the record is gone and the action is audit-logged
+    ok = client.delete(f"{API}/leads/{lead_id}", headers=admin_headers)
+    assert ok.status_code == 200
+    assert client.get(f"{API}/leads/{lead_id}", headers=admin_headers).status_code == 404
+    logs = client.get(f"{API}/admin/logs", headers=admin_headers).json()
+    assert any(lead_id in l["action"] and "deleted" in l["action"].lower() for l in logs)
+
+
+def test_leads_database_delete_missing_returns_404(client, admin_headers):
+    resp = client.delete(f"{API}/leads/LD-NON-EXISTENT", headers=admin_headers)
+    assert resp.status_code == 404
