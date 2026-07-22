@@ -687,9 +687,10 @@ async def ai_call_result(
 @router.post("/ai/run-cycle")
 async def ai_run_cycle(request: Request, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
     """
-    Manually triggers one AUTOMATIC AI calling sweep for the active workspace.
-    Reports when the sweep is blocked (calling disabled, manual mode, or
-    outside the IST window) so the UI can explain the no-op.
+    Explicit "Run Cycle Now" trigger: fires one AI calling sweep for the active
+    workspace on demand, in EITHER calling mode. Still respects the master
+    enable switch and the IST calling window, and reports when either blocks
+    the sweep so the UI can explain the no-op.
     """
     tenant_id = getattr(request.state, "tenant_id", "public")
     settings_row = await pipeline_service.get_settings(db)
@@ -697,15 +698,13 @@ async def ai_run_cycle(request: Request, db: AsyncSession = Depends(get_db), use
 
     if not settings_row.ai_calling_enabled:
         return {"processed": 0, "blocked": "disabled",
-                "detail": "AI calling is disabled for this workspace."}
-    if (settings_row.calling_mode or "automatic") != "automatic":
-        return {"processed": 0, "blocked": "manual_mode",
-                "detail": "Workspace is in Manual mode - select leads and use Start AI Calling."}
+                "detail": "AI calling is disabled for this workspace - enable it in Configure."}
     if not pipeline_service.within_call_window(settings_row):
         return {"processed": 0, "blocked": "window",
                 "detail": f"Outside the calling window ({settings_row.call_window_start}-{settings_row.call_window_end} IST)."}
 
-    processed = await ai_agent.run_cycle_for_tenant(tenant_id, await tenant_name(request, db))
+    processed = await ai_agent.run_cycle_for_tenant(
+        tenant_id, await tenant_name(request, db), ignore_mode=True)
     return {"processed": processed}
 
 

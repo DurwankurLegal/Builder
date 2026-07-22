@@ -415,19 +415,32 @@ def test_settings_write_requires_admin(client, sales_headers):
     assert resp.status_code == 403
 
 
-def test_run_cycle_reports_manual_mode_block(client, admin_headers):
+def test_run_cycle_works_in_manual_mode(client, admin_headers):
+    """Run Cycle Now is an explicit trigger - Manual mode must NOT block it
+    (only the master switch and the IST window can)."""
     original = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
     client.put(f"{API}/pipeline/settings",
                json={"ai_calling_enabled": True, "calling_mode": "manual"}, headers=admin_headers)
     try:
         res = client.post(f"{API}/pipeline/ai/run-cycle", headers=admin_headers).json()
-        assert res["processed"] == 0
-        assert res.get("blocked") == "manual_mode"
+        assert res.get("blocked") != "manual_mode"
     finally:
         client.put(f"{API}/pipeline/settings", json={
             "ai_calling_enabled": original["ai_calling_enabled"],
             "calling_mode": original["calling_mode"],
         }, headers=admin_headers)
+
+
+def test_run_cycle_reports_disabled_block(client, admin_headers):
+    original = client.get(f"{API}/pipeline/settings", headers=admin_headers).json()
+    client.put(f"{API}/pipeline/settings", json={"ai_calling_enabled": False}, headers=admin_headers)
+    try:
+        res = client.post(f"{API}/pipeline/ai/run-cycle", headers=admin_headers).json()
+        assert res["processed"] == 0
+        assert res.get("blocked") == "disabled"
+    finally:
+        client.put(f"{API}/pipeline/settings",
+                   json={"ai_calling_enabled": original["ai_calling_enabled"]}, headers=admin_headers)
 
 
 def test_manual_call_blocked_when_disabled(client, admin_headers, make_raw_lead):

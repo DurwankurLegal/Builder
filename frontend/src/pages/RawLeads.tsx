@@ -257,11 +257,9 @@ export const RawLeads = () => {
                 : `Automatic · up to ${settings?.ai_batch_size} leads / cycle every ${settings?.ai_call_interval_seconds}s · window ${settings?.call_window_start}–${settings?.call_window_end} IST · max call ${Math.round((settings?.max_call_duration_seconds || 300) / 60)} min · retry ${settings?.ai_retry_limit}`}
           </div>
         </div>
-        {settings?.calling_mode !== 'manual' && (
-          <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => runCycleMutation.mutate()}>
-            <Zap size={14} style={{ marginRight: '4px' }} /> Run Cycle Now
-          </button>
-        )}
+        <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => runCycleMutation.mutate()}>
+          <Zap size={14} style={{ marginRight: '4px' }} /> Run Cycle Now
+        </button>
         {isAdmin && (
           <button className="btn btn-outline" style={{ fontSize: 'var(--font-size-xs)' }} onClick={() => setShowLogsModal(true)}>
             <ScrollText size={14} style={{ marginRight: '4px' }} /> AI Logs

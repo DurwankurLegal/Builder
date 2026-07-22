@@ -98,11 +98,15 @@ def simulate_call(lead: PipelineLead) -> dict:
     }
 
 
-async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
+async def run_cycle_for_tenant(tenant_id: str, tenant_name: str, ignore_mode: bool = False) -> int:
     """
-    Runs one AUTOMATIC AI calling sweep inside a tenant schema. Returns number
-    of leads processed. Each lead is committed atomically with its history +
-    audit rows. Respects the workspace's calling mode and IST calling window.
+    Runs one AI calling sweep inside a tenant schema. Returns number of leads
+    processed. Each lead is committed atomically with its history + audit rows.
+
+    The background worker calls this with ignore_mode=False, so it only dials
+    in Automatic mode. An explicit user trigger ("Run Cycle Now") passes
+    ignore_mode=True to fire a cycle on demand even in Manual mode. Either way
+    the master enable switch and the IST calling window are always respected.
     """
     # Hard-validate before interpolating into SET search_path; a tenant row
     # with a malformed id (or a missing schema) is skipped, never executed.
@@ -124,9 +128,9 @@ async def run_cycle_for_tenant(tenant_id: str, tenant_name: str) -> int:
             await session.commit()
             return 0
 
-        # Only AUTOMATIC mode is driven by the background worker; manual mode
-        # dials only the leads a user explicitly selects.
-        if (getattr(settings_row, "calling_mode", "automatic") or "automatic") != "automatic":
+        # The background worker only auto-dials in Automatic mode; an explicit
+        # trigger (ignore_mode) may run a cycle in Manual mode too.
+        if not ignore_mode and (getattr(settings_row, "calling_mode", "automatic") or "automatic") != "automatic":
             await session.commit()
             return 0
 
